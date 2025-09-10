@@ -205,25 +205,6 @@ namespace Unity.GraphToolkit.Editor
                 m_SelectionBorder.MarkDirtyRepaint();
         }
 
-        /// <summary>
-        /// Build the contextual menu.
-        /// </summary>
-        /// <param name="evt">The event.</param>
-        protected override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
-        {
-            base.BuildContextualMenu(evt);
-
-            var model = ((evt.target as VisualElement)?.GetFirstOfType<ModelView>())?.Model as IGroupItemModel;
-
-            if (model != null && BlackboardView.GetSelection().Any(t => t is IGroupItemModel gim && gim.ParentGroup is GroupModel))
-            {
-                evt.menu.AppendAction("Create Group From Selection", _ =>
-                {
-                    model = BlackboardView.CreateGroupFromSelection(model);
-                });
-            }
-        }
-
         void GenerateBorderVisualContent(MeshGenerationContext mgc)
         {
             if (!this.GetHoverPseudoState() && !IsSelected() && !IsHighlighted())

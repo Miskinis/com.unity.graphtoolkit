@@ -14,6 +14,7 @@ namespace Unity.GraphToolkit.InternalBridge
 {
     static class VisualElementBridge
     {
+        public static bool IsOSXContextualMenuPlatform => UIElementsUtility.isOSXContextualMenuPlatform;
         public static Matrix4x4 GetWorldTransformInverse(this VisualElement ve)
         {
             return ve.worldTransformInverse;

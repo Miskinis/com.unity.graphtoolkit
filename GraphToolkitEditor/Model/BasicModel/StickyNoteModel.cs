@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEngine;
 
 namespace Unity.GraphToolkit.Editor
@@ -206,5 +208,24 @@ namespace Unity.GraphToolkit.Editor
             if (Theme == "Dark")
                 Theme = StickyNoteColorTheme.Black.ToString();
         }
+
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems
+        {
+            get
+            {
+                var graphElementModelCommonMenuItems = base.ContextualMenuItems;
+
+                // Combine the common graph element menu items with the sticky note menu items.
+                var menuItems = new List<ContextualMenuItem>(graphElementModelCommonMenuItems);
+                menuItems.AddRange(k_ContextualMenuItems);
+                return menuItems;
+            }
+        }
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            new ContextualMenuItem(ContextualMenuHelpers.fitToTextItem, 1),
+            new ContextualMenuItem(ContextualMenuHelpers.fontSizeAndThemeItem, 2)
+        };
     }
 }

@@ -53,11 +53,13 @@ namespace Unity.GraphToolkit.Editor
         public override void AddToState(IState state)
         {
             state?.AddStateComponent(ModelInspectorState);
+            state?.AddStateComponent(TransitionInspectorState);
         }
 
         /// <inheritdoc />
         public override void RemoveFromState(IState state)
         {
+            state?.RemoveStateComponent(TransitionInspectorState);
             state?.RemoveStateComponent(ModelInspectorState);
         }
     }

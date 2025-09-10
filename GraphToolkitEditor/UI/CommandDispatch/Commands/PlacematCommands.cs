@@ -167,4 +167,88 @@ namespace Unity.GraphToolkit.Editor
             }
         }
     }
+
+    /// <summary>
+    /// Command to delete placemats and select their contents.
+    /// </summary>
+    [UnityRestricted]
+    internal class DeleteAndSelectPlacematContentCommand : UndoableCommand
+    {
+        const string k_UndoString = "Delete and Select Contents";
+
+        public IReadOnlyList<PlacematModel> PlacematModels;
+        public GraphView GraphView;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="DeleteAndSelectPlacematContentCommand"/> class.
+        /// </summary>
+        public DeleteAndSelectPlacematContentCommand()
+        {
+            UndoString = k_UndoString;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="DeleteAndSelectPlacematContentCommand"/> class.
+        /// </summary>
+        /// <param name="placematModels">The placemats to delete.</param>
+        /// <param name="graphView">The graph view.</param>
+        public DeleteAndSelectPlacematContentCommand(IReadOnlyList<PlacematModel> placematModels, GraphView graphView) : this()
+        {
+            PlacematModels = placematModels;
+            GraphView = graphView;
+        }
+
+        /// <summary>
+        /// Default command handler.
+        /// </summary>
+        /// <param name="undoState">The undo state component.</param>
+        /// <param name="graphModelState">The graph model state component.</param>
+        /// <param name="selectionState">The selection state component.</param>
+        /// <param name="command">The command.</param>
+        [UsedImplicitly]
+        public static void DefaultCommandHandler(UndoStateComponent undoState, GraphModelStateComponent graphModelState, SelectionStateComponent selectionState, DeleteAndSelectPlacematContentCommand command)
+        {
+            if (command.PlacematModels.Count == 0)
+                return;
+
+            using (var undoStateUpdater = undoState.UpdateScope)
+            {
+                undoStateUpdater.SaveState(graphModelState);
+                undoStateUpdater.SaveState(selectionState);
+            }
+
+            using (var selectionUpdater = selectionState.UpdateScope)
+            using (var graphUpdater = graphModelState.UpdateScope)
+            using (var changeScope = graphModelState.GraphModel.ChangeDescriptionScope)
+            {
+                var elementsToSelect = new List<GraphElementModel>();
+                var placematsToDelete = new List<PlacematModel>(command.PlacematModels.Count);
+
+                // Iterate through each placemat and collect the elements inside it.
+                foreach (var placematModel in command.PlacematModels)
+                {
+                    if (!placematModel.IsDeletable())
+                        continue;
+
+                    placematsToDelete.Add(placematModel);
+
+                    var placematView = placematModel.GetView<Placemat>(command.GraphView);
+                    placematView?.ActOnGraphElementsInside(element =>
+                    {
+                        elementsToSelect.Add(element.GraphElementModel);
+                        return false;
+                    });
+                }
+
+                // Delete the placemats.
+                graphModelState.GraphModel.DeleteElements(placematsToDelete);
+
+                // Clear the selection and select the elements inside the placemats.
+                selectionUpdater.ClearSelection();
+                selectionUpdater.SelectElements(elementsToSelect, true);
+
+                graphUpdater.MarkUpdated(changeScope.ChangeDescription);
+            }
+        }
+    }
 }

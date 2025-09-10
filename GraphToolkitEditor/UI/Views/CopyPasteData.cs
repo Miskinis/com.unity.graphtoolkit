@@ -13,6 +13,9 @@ namespace Unity.GraphToolkit.Editor
     internal class CopyPasteData : IDisposable
     {
         [SerializeReference]
+        List<Constant> m_Constants;
+
+        [SerializeReference]
         List<AbstractNodeModel> m_Nodes;
 
         [SerializeReference]
@@ -80,6 +83,11 @@ namespace Unity.GraphToolkit.Editor
         public IReadOnlyList<AbstractNodeModel> Nodes => m_Nodes;
 
         /// <summary>
+        /// The <see cref="Constant"/>s to paste.
+        /// </summary>
+        public IReadOnlyList<Constant> Constants => m_Constants;
+
+        /// <summary>
         /// The <see cref="WireModel"/>s to paste.
         /// </summary>
         public IReadOnlyList<WireModel> Wires => m_Wires;
@@ -113,6 +121,11 @@ namespace Unity.GraphToolkit.Editor
         internal bool HasVariableContent()
         {
             return m_VariableDeclarations.Any() || m_VariableGroupPaths.Any();
+        }
+
+        public CopyPasteData(List<Constant> constants)
+        {
+            m_Constants = constants;
         }
 
         public CopyPasteData(BlackboardViewStateComponent bbState, IReadOnlyCollection<Model> graphElementModels)

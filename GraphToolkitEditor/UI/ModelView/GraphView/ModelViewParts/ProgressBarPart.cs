@@ -94,16 +94,18 @@ namespace Unity.GraphToolkit.Editor
         /// </summary>
         /// <param name="value">The progress value, in percent.</param>
         /// <param name="shouldDisplay">Whether the progress should be displayed.</param>
-        protected void SetProgressPercent(float value, bool shouldDisplay)
+        /// <param name="progressActive">Whether the progress is active. Set to true to set the background alpha even if the actual progress is not displayed.</param>
+        protected void SetProgressPercent(float value, bool shouldDisplay, bool progressActive = false)
         {
             m_Progress.tooltip = $"Progress : {value:P}";
             m_Progress.style.width = new StyleLength(Length.Percent(value * 100));
             m_Progress.visible = shouldDisplay;
 
-            var color = m_Root.resolvedStyle.backgroundColor;
+            var color = GetColor();
+
             if (color != Color.clear)
             {
-                color.a = shouldDisplay ? m_DebugBackgroundAlpha : 1f;
+                color.a = shouldDisplay || progressActive ? m_DebugBackgroundAlpha : 1f;
                 m_Root.style.backgroundColor = color;
             }
 
@@ -115,5 +117,18 @@ namespace Unity.GraphToolkit.Editor
         {
             m_DebugBackgroundAlpha = evt.customStyle.TryGetValue(k_DebugBackgroundAlphaProperty, out float alpha) ? alpha : k_DefaultDebugAlpha;
         }
+
+        internal void SetColor(Color color)
+        {
+            var currentColor = GetColor();
+            currentColor.a = color.a;
+            if (currentColor != color) // only update if the color changed, ignoring the current alpha
+            {
+                m_Progress.style.backgroundColor = color;
+                m_Root.style.backgroundColor = color;
+            }
+        }
+
+        internal Color GetColor() => m_Root == null ? Color.clear : m_Root.resolvedStyle.backgroundColor;
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Unity.GraphToolkit.Editor;
@@ -44,25 +45,6 @@ namespace Unity.GraphToolkit.Editor.Implementation
         {
             BuildContextualMenu(evt);
             evt.menu.PrepareForDisplay(evt.triggerEvent);
-        }
-
-        protected override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
-        {
-            if (evt.menu.MenuItems().Count > 0)
-                evt.menu.AppendSeparator();
-
-            if (GraphModel is GraphModelImp {Graph : not null} graphModel )
-            {
-                var subGraphTypes = PublicGraphFactory.GetSubGraphTypes(graphModel.Graph.GetType());
-
-                foreach (var subGraphType in subGraphTypes)
-                {
-                    var template = new SubgraphTemplateImp(subGraphType,subGraphTypes.Count == 1 ? "Subgraph" : $"{subGraphType.Name} Subgraph");
-                    AddConvertToSubgraphMenuItem(typeof(GraphObjectImp), typeof(GraphModelImp), evt, GetSelection(), template);
-                }
-            }
-
-            base.BuildContextualMenu(evt);
         }
     }
 }

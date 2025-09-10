@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEngine;
 
 namespace Unity.GraphToolkit.Editor
@@ -129,5 +130,21 @@ namespace Unity.GraphToolkit.Editor
             // ReSharper disable once SuspiciousTypeConversion.Global
             (m_Value as ICopyPasteCallbackReceiver)?.OnAfterPaste();
         }
+
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems
+        {
+            get
+            {
+                var menuItems = new List<ContextualMenuItem>(base.ContextualMenuItems);
+                menuItems.AddRange(k_ContextualMenuItems);
+                return menuItems;
+            }
+        }
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems =  new() {
+            ContextualMenuHelpers.convertToVariableItem,
+            new ContextualMenuItem(ContextualMenuHelpers.itemizeItem, 0),
+        };
     }
 }

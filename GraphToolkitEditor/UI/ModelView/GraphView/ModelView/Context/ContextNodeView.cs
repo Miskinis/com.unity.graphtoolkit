@@ -241,23 +241,6 @@ namespace Unity.GraphToolkit.Editor
         }
 
         /// <inheritdoc/>
-        protected override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
-        {
-            if (ContextNodeModel is IPlaceholder)
-                return;
-
-            if ((evt.target as VisualElement)?.GetFirstOfType<BlockNodeView>() == null)
-            {
-                evt.menu.AppendMenuItemFromShortcutWithName<ShortcutShowItemLibraryEvent>(GraphView.GraphTool,  "Create Block",
-                    action =>
-                    {
-                        var mousePosition = action?.eventInfo?.mousePosition ?? evt.mousePosition;
-                        ShowItemLibrary(mousePosition);
-                    });
-            }
-        }
-
-        /// <inheritdoc/>
         public virtual bool ShowItemLibrary(Vector2 mousePosition)
         {
             var posInContext = this.WorldToLocal(mousePosition);

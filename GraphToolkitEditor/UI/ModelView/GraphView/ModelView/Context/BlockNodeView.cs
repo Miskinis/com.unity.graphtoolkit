@@ -223,32 +223,6 @@ namespace Unity.GraphToolkit.Editor
         }
 
         /// <inheritdoc/>
-        protected override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
-        {
-            if (BlockNodeModel is IPlaceholder || BlockNodeModel.ContextNodeModel is IPlaceholder)
-                return;
-
-            ContextNodeView context = GetFirstAncestorOfType<ContextNodeView>();
-            if (context == null)
-                return;
-            evt.menu.AppendAction("Insert Block Before",
-                action =>
-                {
-                    Vector2 mousePosition = action?.eventInfo?.mousePosition ?? evt.mousePosition;
-                    context.ShowItemLibrary(mousePosition, BlockNodeModel.GetIndex());
-                });
-            evt.menu.AppendAction("Insert Block After",
-                action =>
-                {
-                    Vector2 mousePosition = action?.eventInfo?.mousePosition ?? evt.mousePosition;
-                    context.ShowItemLibrary(mousePosition, BlockNodeModel.GetIndex() + 1);
-                });
-            evt.menu.AppendSeparator();
-
-            base.BuildContextualMenu(evt);
-        }
-
-        /// <inheritdoc/>
         protected override void BuildUI()
         {
             base.BuildUI();

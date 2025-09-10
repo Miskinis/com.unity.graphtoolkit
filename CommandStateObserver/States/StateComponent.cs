@@ -81,10 +81,17 @@ namespace Unity.GraphToolkit.CSO
 
                 m_State = (TStateComponent)state;
 
-                if (StateObserverHelper.CurrentObserver != null &&
-                    !StateObserverHelper.CurrentObserver.ModifiedStateComponents.Contains(m_State))
+
+                var currentObserver = m_State.State?.CurrentObserver;
+
+                if (currentObserver != null)
                 {
-                    Debug.LogError($"Observer {StateObserverHelper.CurrentObserver?.GetType()} does not specify that it modifies {m_State}. Please add the state component to its {nameof(IStateObserver.ModifiedStateComponents)}.");
+                    if (!currentObserver.ModifiedStateComponents.Contains(m_State))
+                    {
+                        Debug.LogError($"Observer {currentObserver?.GetType()} does not specify that it modifies {m_State}. Please add the state component to its {nameof(IStateObserver.ModifiedStateComponents)}.");
+                    }
+
+
                 }
 
                 m_State.BeginChangeScope();

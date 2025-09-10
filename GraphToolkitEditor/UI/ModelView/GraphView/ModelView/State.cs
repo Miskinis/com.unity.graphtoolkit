@@ -163,48 +163,5 @@ namespace Unity.GraphToolkit.Editor
 
             return true;
         }
-
-        /// <inheritdoc />
-        protected override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
-        {
-            if (StateModel == null)
-                return;
-
-            if (evt.menu.MenuItems().Count != 0)
-                evt.menu.AppendSeparator();
-
-            evt.menu.AppendAction(L10n.Tr("Add Local Transition"), _ =>
-            {
-                GraphView.Dispatch(new CreateSingleStateTransitionSupportCommand(GraphView.GraphModel, StateModel, TransitionSupportKind.Local));
-            });
-
-            evt.menu.AppendAction(L10n.Tr("Add Entry Transition"), _ =>
-            {
-                GraphView.Dispatch(new CreateSingleStateTransitionSupportCommand(GraphView.GraphModel, StateModel, TransitionSupportKind.OnEnter));
-            });
-
-            evt.menu.AppendAction(L10n.Tr("Add Self Transition"), _ =>
-            {
-                GraphView.Dispatch(new CreateSingleStateTransitionSupportCommand(GraphView.GraphModel, StateModel, TransitionSupportKind.Self));
-            });
-
-
-            evt.menu.AppendSeparator();
-            evt.menu.AppendAction(L10n.Tr("Default Enter State"), _ =>
-            {
-                GraphView.Dispatch(new SetEntryPointCommand(GraphView.GraphModel, StateModel, !StateModel.IsEntryPoint));
-            }, StateModel.IsEntryPoint ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
-
-            evt.menu.AppendSeparator();
-
-            if (evt.target is State)
-            {
-                evt.menu.AppendSeparator();
-                evt.menu.AppendAction(L10n.Tr("Rename"), _ =>
-                {
-                    ActivateRename();
-                });
-            }
-        }
     }
 }

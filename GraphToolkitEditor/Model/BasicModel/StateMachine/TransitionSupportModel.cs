@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -446,5 +447,23 @@ namespace Unity.GraphToolkit.Editor
                 GraphModel?.CurrentGraphChangeDescription.AddChangedModel(this, ChangeHint.Data);
             }
         }
+
+        /// <inheritdoc />
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems
+        {
+            get
+            {
+                var wiresMenuItems = base.ContextualMenuItems;
+                var menuItems = new List<ContextualMenuItem>(wiresMenuItems);
+                menuItems.AddRange(k_ContextualMenuItems);
+                return menuItems;
+            }
+        }
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            ContextualMenuHelpers.copyItem,
+            ContextualMenuHelpers.pasteAsNewMenuItem,
+        };
     }
 }

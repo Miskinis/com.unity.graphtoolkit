@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using Unity.GraphToolkit.InternalBridge;
 using UnityEditor;
 using UnityEngine;
@@ -566,7 +567,11 @@ namespace Unity.GraphToolkit.Editor
         /// <param name="sectionName">The name of the section in the Blackboard in which the variable declaration should be created.</param>
         protected void AddCreateVariableFromPortMenuItem(ContextualMenuPopulateEvent evt, bool isInputOrOutput, string sectionName = null)
         {
-            evt.menu.AppendAction("Create Variable from port", _ =>
+            // Don't show this item for a port with no capacity or that is hidden.
+            if (PortModel.Capacity == PortCapacity.None || PortModel.Options.HasFlag(PortModelOptions.Hidden))
+                return;
+
+            evt.menu.AppendAction(L10n.Tr("Create Variable from port"), _ =>
             {
                 var blackboardSection = GraphView.GraphModel.GetSectionModel(string.IsNullOrEmpty(sectionName) ? GraphModel.DefaultSectionName : sectionName);
                 var modifierFlags = !isInputOrOutput ? ModifierFlags.None :
@@ -589,49 +594,113 @@ namespace Unity.GraphToolkit.Editor
         /// <inheritdoc />
         protected override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
         {
-            base.BuildContextualMenu(evt);
-
-            if (evt.currentTarget is not Port)
-                return;
-
-            AddCreateVariableFromPortMenuItem(evt);
-
-            evt.menu.AppendAction("Create Node from port", menuAction =>
-            {
-                ShowItemLibrary();
-            });
-
-            evt.menu.AppendSeparator();
-
-            var connectedPortsCount = PortModel.GetConnectedPorts().Count;
-            evt.menu.AppendAction("Disconnect Wire" + (connectedPortsCount > 1 ? "s" : ""), _ =>
-            {
-                GraphView.Dispatch(new DisconnectWiresOnPortCommand(PortModel));
-            }, connectedPortsCount == 0 ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
-
+            // Build the contextual menu for the port in the Port class, not in GraphView. Ports cannot be selected, so we don't want to use the GraphView's contextual menu.
+            var menuActionMap = new Dictionary<string, Action>();
+            PopulateMenuActionMap(menuActionMap, evt);
+            ViewSelection.BuildContextualMenu(ContextualMenuHelpers.CategorizeMenuItems(PortModel.ContextualMenuItems), evt, menuActionMap);
             evt.StopPropagation();
         }
 
-        void ShowItemLibrary()
+        void PopulateMenuActionMap(Dictionary<string, Action> menuActionMap, ContextualMenuPopulateEvent evt)
         {
-            var portPosition = GetGlobalCenter();
+            if (menuActionMap == null)
+                return;
 
-            if (PortModel.Direction == PortDirection.Input)
+            // ViewSelection menu items:
+            GraphView.ViewSelection.PopulateMenuActionMap(menuActionMap, evt);
+
+            // Common graph element items:
+            menuActionMap.Add(ContextualMenuHelpers.addNodeFromPortItem.Name, () => AppendCreateNodeFromPortItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.createVariableFromPortItem.Name, () => AddCreateVariableFromPortMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.disconnectAllWiresItem.Name, () => AppendDisconnectAllWiresMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.expandPortItem.Name, () => AppendExpandPortMenuItem(evt, true));
+            menuActionMap.Add(ContextualMenuHelpers.collapsePortItem.Name, () => AppendExpandPortMenuItem(evt, false));
+            menuActionMap.Add(ContextualMenuHelpers.copyValueItem.Name, () => AppendCopyValueMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.pasteValueItem.Name, () => AppendPasteValueMenuItem(evt));
+        }
+
+        void AppendCopyValueMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            // Only append "Copy Value" menu item when the port has an embedded constant.
+            if (PortModel.Options == PortModelOptions.NoEmbeddedConstant || PortModel.EmbeddedValue == null)
+                return;
+
+            // Only append "Copy Value" menu item when the contextual menu wasn't opened on the port connector.
+            var connector = GetConnector();
+            var localMousePosition = (evt.currentTarget as VisualElement)?.ChangeCoordinatesTo(connector, evt.localMousePosition) ?? Vector2.zero;
+            if (!connector.ContainsPoint(localMousePosition))
             {
-                ItemLibraryService.ShowInputToGraphNodes(GraphView, new[] { PortModel }, portPosition, item =>
-                {
-                    if (item is GraphNodeModelLibraryItem nodeItem)
-                        GraphView.Dispatch(CreateNodeCommand.OnPort(nodeItem, PortModel, Vector2.zero, autoAlign: true));
-                });
+                // Copy the value of the current port.
+                GraphView.ViewSelection.AppendCopyPortValueMenuItem(evt, PortModel);
             }
-            else
+        }
+
+        void AppendPasteValueMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            // Only append "Paste Value" menu item when the port has an embedded constant.
+            if (PortModel.Options == PortModelOptions.NoEmbeddedConstant || PortModel.EmbeddedValue == null)
+                return;
+
+            // Only append "Paste Value" menu item when the contextual menu wasn't opened on the port connector.
+            var connector = GetConnector();
+            var localMousePosition = (evt.currentTarget as VisualElement)?.ChangeCoordinatesTo(connector, evt.localMousePosition) ?? Vector2.zero;
+            if (!connector.ContainsPoint(localMousePosition))
             {
-                ItemLibraryService.ShowOutputToGraphNodes(GraphView, new[] { PortModel }, portPosition, item =>
-                {
-                    if (item is GraphNodeModelLibraryItem nodeItem)
-                        GraphView.Dispatch(CreateNodeCommand.OnPort(nodeItem, PortModel, Vector2.zero, autoAlign: true));
-                });
+                GraphView.ViewSelection.AppendPastePortValueMenuItem(evt, PortModel);
             }
+        }
+
+        void AppendDisconnectAllWiresMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            // Don't show this item for a port with no capacity or that is hidden.
+            if (PortModel.Capacity == PortCapacity.None || PortModel.Options.HasFlag(PortModelOptions.Hidden))
+                return;
+
+            var connectedPortsCount = PortModel.GetConnectedPorts().Count;
+            evt.menu.AppendAction(L10n.Tr("Disconnect All Wires"), _ =>
+            {
+                GraphView.Dispatch(new DisconnectWiresOnPortCommand(PortModel));
+            }, connectedPortsCount == 0 ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
+        }
+
+        void AppendExpandPortMenuItem(ContextualMenuPopulateEvent evt, bool expand)
+        {
+            if (!GraphView.GraphModel.CanExpandPort(PortModel))
+                return;
+
+            evt.menu.AppendAction(L10n.Tr((expand ? "Expand" :  "Collapse") + " Port"), _ =>
+            {
+                GraphView.Dispatch(new ExpandPortCommand(expand, new[] { PortModel }));
+            }, !PortModel.IsExpandedSelf && expand || PortModel.IsExpandedSelf && !expand ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendCreateNodeFromPortItem(ContextualMenuPopulateEvent evt)
+        {
+            // Don't show this item for a port with no capacity or that is hidden.
+            if (PortModel.Capacity == PortCapacity.None || PortModel.Options.HasFlag(PortModelOptions.Hidden))
+                return;
+
+            evt.menu.AppendAction(L10n.Tr("Add Node from port"), _ =>
+            {
+                var portPosition = GetGlobalCenter();
+
+                if (PortModel.Direction == PortDirection.Input)
+                {
+                    ItemLibraryService.ShowInputToGraphNodes(GraphView, new[] { PortModel }, portPosition, item =>
+                    {
+                        if (item is GraphNodeModelLibraryItem nodeItem)
+                            GraphView.Dispatch(CreateNodeCommand.OnPort(nodeItem, PortModel, Vector2.zero, autoAlign: true));
+                    });
+                }
+                else
+                {
+                    ItemLibraryService.ShowOutputToGraphNodes(GraphView, new[] { PortModel }, portPosition, item =>
+                    {
+                        if (item is GraphNodeModelLibraryItem nodeItem)
+                            GraphView.Dispatch(CreateNodeCommand.OnPort(nodeItem, PortModel, Vector2.zero, autoAlign: true));
+                    });
+                }
+            });
         }
 
         /// <summary>

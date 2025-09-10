@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEngine;
 
 namespace Unity.GraphToolkit.Editor
@@ -10,7 +11,7 @@ namespace Unity.GraphToolkit.Editor
     /// </summary>
     [Serializable]
     [UnityRestricted]
-    internal abstract class AbstractNodeModel : GraphElementModel, IHasTitle, IMovable, IHasElementColor
+    internal abstract class AbstractNodeModel : GraphElementModel, IHasTitle, IMovable, IHasElementColor, IHasContextualMenuItems
     {
         [SerializeField, HideInInspector]
         Vector2 m_Position;
@@ -259,5 +260,28 @@ namespace Unity.GraphToolkit.Editor
 
             return nodePreviewModel;
         }
+
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems
+        {
+            get
+            {
+                var graphElementModelCommonMenuItems = base.ContextualMenuItems;
+
+                // Combine the common graph element menu items with the node menu items.
+                var menuItems = new List<ContextualMenuItem>(graphElementModelCommonMenuItems);
+                menuItems.AddRange(k_ContextualMenuItems);
+                return menuItems;
+            }
+        }
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            ContextualMenuHelpers.deleteAndReconnectItem,
+            new ContextualMenuItem(ContextualMenuHelpers.editSubtitleItem, 0),
+            new ContextualMenuItem(ContextualMenuHelpers.bypassNodeItem, 1),
+            new ContextualMenuItem(ContextualMenuHelpers.disableNodeItem, 2),
+            new ContextualMenuItem(ContextualMenuHelpers.disconnectAllWiresItem, 3),
+            new ContextualMenuItem(ContextualMenuHelpers.toggleCollapseItem, 5)
+        };
     }
 }

@@ -32,6 +32,11 @@ namespace Unity.GraphToolkit.Editor
         public static readonly string noInputUssClassName = ussClassName.WithUssModifier("no-input");
 
         /// <summary>
+        /// uss modifier class name when all input ports have a capacity of <see cref="PortCapacity.None"/>.
+        /// </summary>
+        public static readonly string noInputCapacityUssClassName = ussClassName.WithUssModifier("no-input-capacity");
+
+        /// <summary>
         /// uss modifier class name when there is not output.
         /// </summary>
         public static readonly string noOutputUssClassName = ussClassName.WithUssModifier("no-output");

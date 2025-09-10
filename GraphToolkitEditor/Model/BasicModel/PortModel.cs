@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using Unity.GraphToolkit.InternalBridge;
 using UnityEngine;
 using UnityEngine.Pool;
@@ -912,5 +913,18 @@ namespace Unity.GraphToolkit.Editor
          }
 
          Type IPort.dataType => DataTypeHandle == TypeHandle.ExecutionFlow ? null : PortDataType;
+
+         /// <inheritdoc />
+         public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems => k_ContextualMenuItems;
+
+         static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+             ContextualMenuHelpers.addNodeFromPortItem,
+             ContextualMenuHelpers.createVariableFromPortItem,
+             ContextualMenuHelpers.copyValueItem,
+             ContextualMenuHelpers.pasteValueItem,
+             ContextualMenuHelpers.disconnectAllWiresItem,
+             ContextualMenuHelpers.expandPortItem,
+             ContextualMenuHelpers.collapsePortItem,
+         };
     }
 }

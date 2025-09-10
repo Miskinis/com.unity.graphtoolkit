@@ -11,7 +11,7 @@ namespace Unity.GraphToolkit.Editor
     /// Changes the <see cref="GraphView"/> offset when the mouse is clicked and dragged in its background.
     /// </summary>
     [UnityRestricted]
-    internal class ContentDragger : MouseManipulator
+    internal class ContentDragger : PointerManipulator
     {
         Vector2 m_Start;
         public Vector2 panSpeed { get; set; }
@@ -19,6 +19,8 @@ namespace Unity.GraphToolkit.Editor
         public bool ClampToParentWires { get; set; }
 
         bool m_Active;
+        bool m_DidDrag;
+        int m_MouseButton;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ContentDragger"/> class.
@@ -27,6 +29,8 @@ namespace Unity.GraphToolkit.Editor
         {
             m_Active = false;
             activators.Add(new ManipulatorActivationFilter { button = MouseButton.LeftMouse, modifiers = EventModifiers.Alt });
+            if (! VisualElementBridge.IsOSXContextualMenuPlatform)
+                activators.Add(new ManipulatorActivationFilter { button = MouseButton.RightMouse });
             activators.Add(new ManipulatorActivationFilter { button = MouseButton.MiddleMouse });
             panSpeed = new Vector2(1, 1);
             ClampToParentWires = false;
@@ -40,21 +44,19 @@ namespace Unity.GraphToolkit.Editor
                 throw new InvalidOperationException("Manipulator can only be added to a GraphView");
             }
 
-            target.RegisterCallback<MouseDownEvent>(OnMouseDown);
-            target.RegisterCallback<MouseMoveEvent>(OnMouseMove);
-            target.RegisterCallback<MouseUpEvent>(OnMouseUp);
-            target.RegisterCallback<MouseCaptureOutEvent>(OnMouseCaptureOutEvent);
+            target.RegisterCallback<PointerDownEvent>(OnMouseDown);
+            target.RegisterCallback<PointerUpEvent>(OnMouseUp);
+            target.RegisterCallback<PointerCaptureOutEvent>(OnMouseCaptureOutEvent);
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
-            target.UnregisterCallback<MouseDownEvent>(OnMouseDown);
-            target.UnregisterCallback<MouseMoveEvent>(OnMouseMove);
-            target.UnregisterCallback<MouseUpEvent>(OnMouseUp);
-            target.UnregisterCallback<MouseCaptureOutEvent>(OnMouseCaptureOutEvent);
+            target.UnregisterCallback<PointerDownEvent>(OnMouseDown);
+            target.UnregisterCallback<PointerUpEvent>(OnMouseUp);
+            target.UnregisterCallback<PointerCaptureOutEvent>(OnMouseCaptureOutEvent);
         }
 
-        protected void OnMouseDown(MouseDownEvent e)
+        protected void OnMouseDown(PointerDownEvent e)
         {
             if (m_Active)
             {
@@ -69,17 +71,20 @@ namespace Unity.GraphToolkit.Editor
             if (graphView == null)
                 return;
 
-            m_Start = graphView.ChangeCoordinatesTo(graphView.ContentViewContainer, e.localMousePosition);
+            m_Start = graphView.ChangeCoordinatesTo(graphView.ContentViewContainer, e.localPosition);
 
             m_Active = true;
-            target.CaptureMouse();
+            m_DidDrag = false;
+            target.CapturePointer(e.pointerId);
+            m_MouseButton = e.button;
 
             EditorGUIUtilityBridge.SetCursor(MouseCursor.Pan);
+            target.RegisterCallback<PointerMoveEvent>(OnMouseMove);
 
             e.StopImmediatePropagation();
         }
 
-        protected void OnMouseMove(MouseMoveEvent e)
+        protected void OnMouseMove(PointerMoveEvent e)
         {
             if (!m_Active)
                 return;
@@ -88,28 +93,40 @@ namespace Unity.GraphToolkit.Editor
             if (graphView == null)
                 return;
 
-            var diff = graphView.ChangeCoordinatesTo(graphView.ContentViewContainer, e.localMousePosition) - m_Start;
+            var diff = graphView.ChangeCoordinatesTo(graphView.ContentViewContainer, e.localPosition) - m_Start;
 
-            // During the drag update only the view
-            var scale = graphView.ContentViewContainer.resolvedStyle.scale.value;
-            var position = graphView.ContentViewContainer.resolvedStyle.translate + Vector3.Scale(diff, scale);
-            graphView.UpdateViewTransform(position, scale);
+            const float kDragThreshold = 8;
 
-            EditorGUIUtilityBridge.SetCursor(MouseCursor.Pan);
+            // We want to apply a threshold to the drag in the case of a right click to keep the right click menu in case of a very small ( potentially unwanted ) pan.
+            if (m_DidDrag || m_MouseButton != (int)MouseButton.RightMouse || diff.sqrMagnitude > kDragThreshold*kDragThreshold)
+            {
+                m_DidDrag = true;
 
-            e.StopPropagation();
+                // During the drag update only the view
+                var scale = graphView.ContentViewContainer.resolvedStyle.scale.value;
+                var position = graphView.ContentViewContainer.resolvedStyle.translate + Vector3.Scale(diff, scale);
+                graphView.UpdateViewTransform(position, scale);
+
+                EditorGUIUtilityBridge.SetCursor(MouseCursor.Pan);
+
+                e.StopPropagation();
+            }
         }
 
-        protected void OnMouseUp(MouseUpEvent e)
+        protected void OnMouseUp(PointerUpEvent e)
         {
             if (!m_Active || !CanStopManipulation(e))
                 return;
 
             StopManipulation();
-            e.StopPropagation();
+            if (m_DidDrag)
+            {
+                //If we did drag, we stop the propagation to cancel the right click menu.
+                e.StopImmediatePropagation();
+            }
         }
 
-        protected void OnMouseCaptureOutEvent(MouseCaptureOutEvent evt)
+        protected void OnMouseCaptureOutEvent(PointerCaptureOutEvent evt)
         {
             if (!m_Active)
                 return;
@@ -130,6 +147,7 @@ namespace Unity.GraphToolkit.Editor
             target.ReleaseMouse();
 
             EditorGUIUtilityBridge.SetCursor(MouseCursor.Arrow);
+            target.UnregisterCallback<PointerMoveEvent>(OnMouseMove);
         }
     }
 }

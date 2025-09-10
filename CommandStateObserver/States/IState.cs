@@ -27,6 +27,9 @@ namespace Unity.GraphToolkit.CSO
         /// <param name="stateComponent">The state component to remove.</param>
         void RemoveStateComponent(IStateComponent stateComponent);
 
+
+        IStateObserver CurrentObserver { get; set; }
+
         /// <summary>
         /// Delegate called when state components are added to the state or removed from the state.
         /// </summary>

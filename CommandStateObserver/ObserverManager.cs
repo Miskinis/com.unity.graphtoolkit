@@ -263,7 +263,7 @@ namespace Unity.GraphToolkit.CSO
                         {
                             foreach (var observer in m_ObserverCallList)
                             {
-                                StateObserverHelper.CurrentObserver = observer;
+                                state.CurrentObserver = observer;
                                 using (m_ProfilerMarkers[observer].Auto())
                                 {
                                     observer.Observe();
@@ -272,7 +272,7 @@ namespace Unity.GraphToolkit.CSO
                         }
                         finally
                         {
-                            StateObserverHelper.CurrentObserver = null;
+                            state.CurrentObserver = null;
                         }
 
                         // If m_ObserverCallList is empty, observed versions did not change, so changesets do not need to be purged.

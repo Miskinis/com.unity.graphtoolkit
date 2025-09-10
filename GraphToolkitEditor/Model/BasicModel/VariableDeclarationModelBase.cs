@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEngine;
 
 namespace Unity.GraphToolkit.Editor
@@ -274,5 +275,21 @@ namespace Unity.GraphToolkit.Editor
                 return VariableKind.Local;
             }
         }
+
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems => k_ContextualMenuItems;
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            ContextualMenuHelpers.createVariableItem,
+            ContextualMenuHelpers.createGroupItem,
+            ContextualMenuHelpers.cutItem,
+            ContextualMenuHelpers.copyItem,
+            ContextualMenuHelpers.pasteItem,
+            ContextualMenuHelpers.renameItem,
+            ContextualMenuHelpers.duplicateItem,
+            ContextualMenuHelpers.deleteItem,
+            ContextualMenuHelpers.selectAllItem,
+            ContextualMenuHelpers.selectUnusedItem,
+        };
     }
 }

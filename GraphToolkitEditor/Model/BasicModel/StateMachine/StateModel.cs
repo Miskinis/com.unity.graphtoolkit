@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEditor;
 using UnityEngine;
 
@@ -194,5 +195,28 @@ namespace Unity.GraphToolkit.Editor
 
             m_ElementColor.OwnerElementModel = this;
         }
+
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems => k_ContextualMenuItems;
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            ContextualMenuHelpers.createTransitionMenuItem,
+            ContextualMenuHelpers.createLocalTransitionMenuItem,
+            ContextualMenuHelpers.createOnEnterTransitionMenuItem,
+            ContextualMenuHelpers.createSelfTransitionMenuItem,
+            ContextualMenuHelpers.createPlacematItem,
+
+            ContextualMenuHelpers.cutItem,
+            ContextualMenuHelpers.copyItem,
+            ContextualMenuHelpers.pasteItem,
+            ContextualMenuHelpers.pasteAsNewMenuItem,
+
+            ContextualMenuHelpers.renameItem,
+            ContextualMenuHelpers.duplicateItem,
+            ContextualMenuHelpers.deleteItem,
+
+            ContextualMenuHelpers.setAsDefaultStateMenuItem,
+            ContextualMenuHelpers.colorItem
+        };
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEngine;
 
 namespace Unity.GraphToolkit.Editor
@@ -10,7 +11,7 @@ namespace Unity.GraphToolkit.Editor
     /// </summary>
     [Serializable]
     [UnityRestricted]
-    internal abstract partial class GraphElementModel : Model, ICopyPasteCallbackReceiver
+    internal abstract partial class GraphElementModel : Model, ICopyPasteCallbackReceiver, IHasContextualMenuItems
     {
         [SerializeField, HideInInspector]
         SerializationVersion m_Version;
@@ -116,5 +117,23 @@ namespace Unity.GraphToolkit.Editor
                 callbackReceiver.OnAfterPaste();
             }
         }
+
+        /// <inheritdoc />
+        public virtual IReadOnlyList<ContextualMenuItem> ContextualMenuItems => k_CommonGraphElementMenuItems;
+
+        static readonly List<ContextualMenuItem> k_CommonGraphElementMenuItems = new() {
+            ContextualMenuHelpers.createPlacematItem,
+            ContextualMenuHelpers.createLocalSubgraphFromSelectionItem,
+            ContextualMenuHelpers.cutItem,
+            ContextualMenuHelpers.copyItem,
+            ContextualMenuHelpers.pasteItem,
+            ContextualMenuHelpers.pasteAsNewMenuItem,
+            ContextualMenuHelpers.renameItem,
+            ContextualMenuHelpers.duplicateItem,
+            ContextualMenuHelpers.deleteItem,
+            ContextualMenuHelpers.frameSelectionItem,
+            ContextualMenuHelpers.colorItem,
+            ContextualMenuHelpers.alignAndDistributeElementsItem
+        };
     }
 }

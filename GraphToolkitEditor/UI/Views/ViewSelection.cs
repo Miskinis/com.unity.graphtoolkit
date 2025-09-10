@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using Unity.GraphToolkit.InternalBridge;
 using Unity.GraphToolsAuthoringFramework.InternalEditorBridge;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -257,6 +259,8 @@ namespace Unity.GraphToolkit.Editor
         /// </summary>
         protected virtual void PasteWithoutWires()
         {
+            // TODO: Rename and modify when we have a proper implementation for the Paste/Duplicate with Wires.
+
             if (View == null)
                 return;
 
@@ -284,6 +288,8 @@ namespace Unity.GraphToolkit.Editor
         /// </summary>
         protected virtual void DuplicateSelectionWithoutWires()
         {
+            // TODO: Rename and modify when we have a proper implementation for the Paste/Duplicate with Wires.
+
             if (View == null)
                 return;
 
@@ -383,61 +389,167 @@ namespace Unity.GraphToolkit.Editor
         }
 
         /// <summary>
-        /// Adds items related to the selection to the contextual menu.
+        /// Builds the contextual menu from the categorized <see cref="ContextualMenuItem"/>s.
         /// </summary>
-        /// <param name="evt">The contextual menu event.</param>
-        public virtual void BuildContextualMenu(ContextualMenuPopulateEvent evt)
+        /// <param name="categorizedMenuItems">The <see cref="ContextualMenuItem"/>s used to build the menu, organized by <see cref="ContextualMenuCategory"/>.</param>
+        /// <param name="evt">The event to populate the contextual menu.</param>
+        /// <param name="menuActionMap">A dictionary mapping each <see cref="ContextualMenuItem"/>'s name to its corresponding action to be invoked when the menu item is selected.</param>
+        public static void BuildContextualMenu(Dictionary<ContextualMenuCategory, List<ContextualMenuItem>> categorizedMenuItems, ContextualMenuPopulateEvent evt, Dictionary<string, Action> menuActionMap)
         {
-            if (evt.menu.MenuItems().Count > 0)
-                evt.menu.AppendSeparator();
+            // If there are no categorized menu items, we can return early.
+            if (categorizedMenuItems == null)
+                return;
 
-            evt.menu.AppendAction(CommandMenuItemNames.Cut, _ => { CutSelection(); },
-                CanCutSelection() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-
-            evt.menu.AppendAction(CommandMenuItemNames.Copy, _ => { CopySelection(); },
-                CanCopySelection() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-
-            evt.menu.AppendAction(CommandMenuItemNames.Paste, menuAction =>
+            // Append actions to the contextual menu using the categorized menu items.
+            var menuCategories = (ContextualMenuCategory[])Enum.GetValues(typeof(ContextualMenuCategory));
+            for (var i = 0; i < menuCategories.Length; i++)
             {
-                Paste();
-            }, CanPaste() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+                // Skip empty categories.
+                if (!categorizedMenuItems.TryGetValue(menuCategories[i], out var itemsInCategory) || itemsInCategory.Count == 0)
+                    continue;
 
+                // Append a separator before each category, except:
+                // - Before the first category
+                // - Before the OrganizationalElements category
+                // - Before the ToolSpecificElements category
+                if (evt.menu.MenuItems().Count > 0 &&
+                    menuCategories[i] != ContextualMenuCategory.OrganizationalElements &&
+                    menuCategories[i] != ContextualMenuCategory.ToolSpecificElements)
+                    evt.menu.AppendSeparator();
 
-            bool pasteAsNewActionAdded = false;
-            if (evt.target is Transition || evt.target is State)
-            {
-                using var copyPasteData = m_ClipboardProvider.DeserializeDataFromClipboard();
-                bool canPasteTransitionAsNew = Transition.CanPasteTransitionsAsNew(copyPasteData);
-                if (canPasteTransitionAsNew)
+                // Append the items in the current category to the contextual menu.
+                foreach (var item in itemsInCategory)
                 {
-                    var target = evt.target;
-                    evt.menu.AppendAction(Transition.pasteTransitionsAsNewCommandName + " " + ShortCutPasteWithoutWires.GetCurrentBinding(View.GraphTool).GetShortcutMenuString(), target is Transition transition ? _ => transition.PasteAsNew() : _ => ((State)target).PasteAsNew() );
-                    pasteAsNewActionAdded = true;
+                    if (menuActionMap.TryGetValue(item.Name, out var action))
+                        action.Invoke();
                 }
             }
-            if (!pasteAsNewActionAdded)
+        }
+
+        internal void PopulateMenuActionMap(Dictionary<string, Action> menuActionMap, ContextualMenuPopulateEvent evt)
+        {
+            if (menuActionMap == null)
+                return;
+
+            menuActionMap.Add(ContextualMenuHelpers.cutItem.Name, () => AppendCutMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.copyItem.Name, () => AppendCopyMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.pasteItem.Name, () => AppendPasteMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.renameItem.Name, () => AppendRenameMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.duplicateItem.Name, () => AppendDuplicateMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.deleteItem.Name, () => AppendDeleteMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.selectAllItem.Name, () => AppendSelectAllMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.pasteAsNewMenuItem.Name, () => AppendPasteAsNewMenuItem(evt));
+        }
+
+        void AppendCutMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            evt.menu.AppendAction(CommandMenuItemNames.Cut, _ => { CutSelection(); },
+                CanCutSelection() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendCopyMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            evt.menu.AppendAction(CommandMenuItemNames.Copy, _ => { CopySelection(); },
+                CanCopySelection() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        internal void AppendCopyPortValueMenuItem(ContextualMenuPopulateEvent evt, PortModel portModel)
+        {
+            var canCopy = portModel.GetConnectedWires().Count == 0 && portModel.EmbeddedValue != null;
+            evt.menu.AppendAction(L10n.Tr("Copy Value"), _ =>
             {
-                evt.menu.AppendMenuItemFromShortcut<ShortCutPasteWithoutWires>( View?.GraphTool, _ => PasteWithoutWires(), CanPaste() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+                var copyPasteData = new CopyPasteData(new List<Constant> { portModel.EmbeddedValue });
+                m_ClipboardProvider.SerializeDataToClipboard(copyPasteData);
+            },
+            canCopy ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        internal void AppendPastePortValueMenuItem(ContextualMenuPopulateEvent evt, PortModel portModel)
+        {
+            using var copyPasteData = m_ClipboardProvider.DeserializeDataFromClipboard();
+            var canPaste = false;
+            Constant constant = null;
+
+            if (copyPasteData is { Constants: not null } && copyPasteData.Constants.Count > 0 && portModel.GetConnectedWires().Count == 0)
+            {
+                constant = copyPasteData.Constants[0];
+                canPaste = CanPaste() && portModel.EmbeddedValue != null && portModel.EmbeddedValue.IsAssignableFrom(constant.Type);
             }
 
-            evt.menu.AppendSeparator();
+            evt.menu.AppendAction(L10n.Tr("Paste Value"), _ =>
+            {
+                View.Dispatch(new UpdateConstantsValueCommand(new[] { portModel.EmbeddedValue }, constant?.ObjectValue));
+            }, canPaste ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
 
+        void AppendPasteMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            evt.menu.AppendAction(CommandMenuItemNames.Paste, menuAction => { Paste(); },
+                CanPaste() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendPasteAsNewMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            var selection = GetSelection();
+            if (selection.Count > 1)
+                return;
+
+            var transitionSupportModel = selection[0] as TransitionSupportModel;
+            var stateModel = selection[0] as StateModel;
+
+            if (transitionSupportModel == null && stateModel == null)
+                return;
+
+            using var copyPasteData = m_ClipboardProvider.DeserializeDataFromClipboard();
+            var enableItemMenu = Transition.CanPasteTransitionsAsNew(copyPasteData);
+
+            Action<DropdownMenuAction> action = null;
+            if (transitionSupportModel != null)
+            {
+                var transition = transitionSupportModel.GetView<Transition>(View);
+                if (transition != null)
+                    action = _ => transition.PasteAsNew();
+            }
+
+            if (stateModel != null)
+            {
+                var state = stateModel.GetView<State>(View);
+                if (state != null)
+                    action = _ => state.PasteAsNew();
+            }
+
+            if (action == null)
+                return;
+
+            evt.menu.AppendMenuItemFromShortcutWithName<ShortCutPasteWithoutWires>(View.GraphTool, L10n.Tr("Paste as New"), action,
+                enableItemMenu ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendRenameMenuItem(ContextualMenuPopulateEvent evt)
+        {
             var elementToRename = GetRenamableElement();
-            evt.menu.AppendAction("Rename", _ => { RenameElement(elementToRename); },
-                elementToRename is not null ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            if (elementToRename == null)
+                return;
 
+            evt.menu.AppendAction("Rename", _ => { RenameElement(elementToRename); });
+        }
+
+        void AppendDuplicateMenuItem(ContextualMenuPopulateEvent evt)
+        {
             evt.menu.AppendAction(CommandMenuItemNames.Duplicate, _ => { DuplicateSelection(); },
                 CanDuplicateSelection() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-            evt.menu.AppendMenuItemFromShortcut<ShortCutDuplicateWithoutWires>(View.GraphTool, _ => { DuplicateSelectionWithoutWires(); },
-                CanDuplicateSelection() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
 
+        void AppendDeleteMenuItem(ContextualMenuPopulateEvent evt)
+        {
             evt.menu.AppendAction(CommandMenuItemNames.Delete, _ =>
             {
                 View.Dispatch(new DeleteElementsCommand(GetSelection().ToList()));
             }, CanDeleteSelection() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
 
-            evt.menu.AppendSeparator();
-
+        void AppendSelectAllMenuItem(ContextualMenuPopulateEvent evt)
+        {
             evt.menu.AppendAction(CommandMenuItemNames.SelectAll, _ =>
             {
                 View.Dispatch(new SelectElementsCommand(SelectElementsCommand.SelectionMode.Add, SelectableModels.ToList()));

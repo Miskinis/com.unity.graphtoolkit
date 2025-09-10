@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0-exp.1] - 2025-09-10
+
+### Added
+
+* Added a new shortcut `Create Local Subgraph from Selection`. Default value: `Ctrl/Cmd + Shift + L`.
+* Users can now pan using right click except on macOS.
+
+### Changed
+
+* Style: Removed the space occupied by the hidden port connectors of input ports with a capacity of `None` if all input ports on the node have no capacity.
+* Contextual menus now show only items common to the selection, instead of combining all menu items.
+* Right-clicking on an empty part of the graph canvas now opens the canvas menu, even when elements are selected.
+
+### Fixed
+
+* Fixed a bug where port types on Block Nodes would not appear in the Create Variable menu in the Blackboard.
+
 ## [0.3.0-exp.1] - 2025-08-20
 
 ### Added

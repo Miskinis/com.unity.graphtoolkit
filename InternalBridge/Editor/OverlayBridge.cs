@@ -123,6 +123,11 @@ namespace Unity.GraphToolsAuthoringFramework.InternalEditorBridge
             return data;
         }
 
+        public static void ShowOverlayMenuAtPosition(this OverlayCanvas overlayCanvas, Vector2 position)
+        {
+            overlayCanvas.ShowPopup<OverlayMenu>(position);
+        }
+
         // Copied from OverlayCanvas.
         static readonly string[] k_DockZoneContainerIDs = new string[7]
         {

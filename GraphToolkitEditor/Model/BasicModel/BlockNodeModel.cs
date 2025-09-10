@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEngine;
 
 namespace Unity.GraphToolkit.Editor
@@ -83,5 +85,22 @@ namespace Unity.GraphToolkit.Editor
 
             return -1;
         }
+
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems
+        {
+            get
+            {
+                var nodeMenuItems = base.ContextualMenuItems;
+                var menuItems = new List<ContextualMenuItem>(nodeMenuItems);
+                menuItems.AddRange(k_ContextualMenuItems);
+                return menuItems;
+            }
+        }
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            new ContextualMenuItem(ContextualMenuHelpers.insertBlockAboveItem, 0),
+            new ContextualMenuItem(ContextualMenuHelpers.insertBlockBelowItem, 1),
+        };
     }
 }

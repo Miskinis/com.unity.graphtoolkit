@@ -236,7 +236,6 @@ namespace Unity.GraphToolkit.Editor
         /// <param name="elementsToCreate">The graph elements that need to be created in the local subgraph.</param>
         /// <param name="graphView">The current graph view.</param>
         /// <param name="position">The position where to create the subgraph node.</param>
-        /// <param name="assetType">The type of the asset.</param>
         /// <param name="template">The template of the graph.</param>
         /// <param name="defaultName">The default name for the local subgraph.</param>
         /// <param name="elementsToDelete">Additional graph elements to delete, if any.</param>

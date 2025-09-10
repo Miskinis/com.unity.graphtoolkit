@@ -96,6 +96,18 @@ namespace Unity.GraphToolkit.Editor
         const ShortcutModifiers k_Modifiers = ShortcutModifiers.Action | ShortcutModifiers.Shift;
     }
 
+    /// <summary>
+    /// An event sent by the Convert To Local Subgraph shortcut.
+    /// </summary>
+    [ToolShortcutEvent(null, id, k_KeyCode, k_Modifiers)]
+    [UnityRestricted]
+    internal class ShortcutCreateLocalSubgraphFromSelectionEvent : ShortcutEventBase<ShortcutCreateLocalSubgraphFromSelectionEvent>
+    {
+        public const string id = "Create Local Subgraph from Selection";
+        const KeyCode k_KeyCode = KeyCode.L;
+        const ShortcutModifiers k_Modifiers = ShortcutModifiers.Action | ShortcutModifiers.Shift;
+    }
+
     /* TODO OYT (GTF-804): For V1, access to the Align Items and Align Hierarchy features was removed as they are confusing to users. To be improved before making them accessible again.
     /// <summary>
     /// An event sent by the Align Nodes shortcut.
@@ -135,24 +147,27 @@ namespace Unity.GraphToolkit.Editor
     /// <summary>
     /// An event sent by the Create Sticky Note.
     /// </summary>
-    [ToolShortcutEvent(null, id)]
+    [ToolShortcutEvent(null, id, k_KeyCode, k_Modifiers)]
     [UnityRestricted]
     internal class ShortcutCreatePlacematEvent : ShortcutEventBase<ShortcutCreatePlacematEvent>
     {
         public const string id = "Create Placemat";
+        const KeyCode k_KeyCode = KeyCode.G;
+        const ShortcutModifiers k_Modifiers = ShortcutModifiers.Action;
     }
 
     /// <summary>
     /// An event sent by the Paste Without Wires shortcut.
     /// </summary>
-    /// <remarks>The same shortcut is used for "Paste Transitions as New"</remarks>
-    [ToolShortcutEvent(null, id, keyCode, modifiers)]
+    /// <remarks>The same shortcut is used for "Paste as New"</remarks>
+    [ToolShortcutEvent(null, id, k_KeyCode, k_Modifiers)]
     [UnityRestricted]
     internal class ShortCutPasteWithoutWires : ShortcutEventBase<ShortCutPasteWithoutWires>
     {
-        public const string id = "Paste Without Wires";
-        const KeyCode keyCode = KeyCode.V;
-        const ShortcutModifiers modifiers = ShortcutModifiers.Shift | ShortcutModifiers.Action;
+        // TODO: Needs to be renamed when we have a proper implementation for the Paste/Duplicate with Wires.
+        public const string id = "Paste without Wires";
+        const KeyCode k_KeyCode = KeyCode.V;
+        const ShortcutModifiers k_Modifiers = ShortcutModifiers.Shift | ShortcutModifiers.Action;
     }
 
     /// <summary>
@@ -162,7 +177,8 @@ namespace Unity.GraphToolkit.Editor
     [UnityRestricted]
     internal class ShortCutDuplicateWithoutWires : ShortcutEventBase<ShortCutDuplicateWithoutWires>
     {
-        public const string id = "Duplicate Without Wires";
+        public const string id = "Duplicate without Wires";
+        // TODO: Needs to be renamed when we have a proper implementation for the Paste/Duplicate with Wires.
         const KeyCode k_KeyCode = KeyCode.D;
         const ShortcutModifiers k_Modifiers = ShortcutModifiers.Shift | ShortcutModifiers.Action;
     }

@@ -75,6 +75,7 @@ namespace Unity.GraphToolkit.Editor
             registrar.RegisterDefaultCommandHandler<ChangePlacematLayoutAndBringPlacematToFrontCommand>();
             registrar.RegisterDefaultCommandHandler<CreatePlacematCommand>();
             registrar.RegisterDefaultCommandHandler<ChangePlacematOrderCommand>();
+            registrar.RegisterDefaultCommandHandler<DeleteAndSelectPlacematContentCommand>();
             registrar.RegisterDefaultCommandHandler<CreateStickyNoteCommand>();
             registrar.RegisterDefaultCommandHandler<UpdateStickyNoteCommand>();
             registrar.RegisterDefaultCommandHandler<UpdateStickyNoteThemeCommand>();

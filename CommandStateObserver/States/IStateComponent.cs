@@ -19,6 +19,12 @@ namespace Unity.GraphToolkit.CSO
         /// </summary>
         public IChangesetManager ChangesetManager { get; }
 
+
+        /// <summary>
+        /// The state from which this state component is part of.
+        /// </summary>
+        public IState State { get; }
+
         /// <summary>
         /// Gets the type of update an observer should do.
         /// </summary>

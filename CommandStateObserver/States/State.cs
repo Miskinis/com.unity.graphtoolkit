@@ -19,6 +19,8 @@ namespace Unity.GraphToolkit.CSO
         /// </summary>
         public Action<IState, IStateComponent> OnStateComponentListModified { get; set; } = null;
 
+        public IStateObserver CurrentObserver { get; set; }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="State" /> class.
         /// </summary>

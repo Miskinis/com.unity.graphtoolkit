@@ -198,8 +198,7 @@ namespace Unity.GraphToolkit.Editor
                 var collapsed = (NodeModel as ICollapsible)?.Collapsed ?? false;
                 EnableInClassList(collapsedUssClassName, collapsed);
                 var collapseButton = GetNodeToolbarButton(CollapseButton.collapseButtonName);
-                if (collapseButton != null)
-                    collapseButton.value = collapsed;
+                collapseButton?.SetValueWithoutNotify(collapsed);
             }
         }
 

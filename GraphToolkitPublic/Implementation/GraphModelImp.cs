@@ -27,6 +27,8 @@ namespace Unity.GraphToolkit.Editor.Implementation
 
         public Graph Graph => m_Graph;
 
+        public override bool AllowSubgraphCreation => Graph?.GetType().GetCustomAttribute<GraphAttribute>()?.options.HasFlag(GraphOptions.SupportsSubgraphs) ?? false;
+
         public override void OnEnable()
         {
             var graphObject = GraphObject as GraphObjectImp;
@@ -334,6 +336,23 @@ namespace Unity.GraphToolkit.Editor.Implementation
             return false;
         }
 
+        public override List<GraphTemplate> SubgraphTemplates
+        {
+            get
+            {
+                var subgraphTemplates = new List<GraphTemplate>();
+                var subGraphTypes = PublicGraphFactory.GetSubGraphTypes(Graph.GetType());
+
+                foreach (var subGraphType in subGraphTypes)
+                {
+                    var template = new SubgraphTemplateImp(subGraphType,subGraphTypes.Count == 1 ? "Subgraph" : subGraphType.Name);
+                    subgraphTemplates.Add(template);
+                }
+
+                return subgraphTemplates;
+            }
+        }
+
         void BuildNodesFromNodeModels()
         {
             if (m_Nodes == null)
@@ -444,41 +463,23 @@ namespace Unity.GraphToolkit.Editor.Implementation
 
             foreach (var type in SupportedNodes)
             {
-                if (type.IsAbstract)
-                    return;
-
                 IUserNodeModelImp createdElement;
 
-                bool isBlock = typeof(BlockNode).IsAssignableFrom(type);
-
-                if (isBlock)
+                if (typeof(ContextNode).IsAssignableFrom(type))
                 {
-                    var context = (UserContextNodeModelImp)CreateContextFromBlockData(nodeCreationData, type, typeof(DummyContext));
-
-                    createdElement = (IUserNodeModelImp)context.blocks[0].m_Implementation;
+                    InitializeSupportedTypesFromContextNodeType(m_Graph.GetType(), nodeCreationData, type, supportedTypes);
+                    createdElement = (IUserNodeModelImp)(CreateContextNodeFromData(nodeCreationData, type) as ContextNodeModel);
                 }
-                else if (typeof(ContextNode).IsAssignableFrom(type))
-                    createdElement = (IUserNodeModelImp)CreateContextNodeFromData(nodeCreationData, type);
                 else
                     createdElement = (IUserNodeModelImp)CreateNodeFromData(nodeCreationData, type);
 
-                foreach (var input in createdElement.Node.GetInputPorts())
-                {
-                    if (input.dataType != null)
-                        supportedTypes.Add(input.dataType);
-                }
-
-                foreach (var output in createdElement.Node.GetOutputPorts())
-                {
-                    if (output.dataType != null)
-                        supportedTypes.Add(output.dataType);
-                }
+                GetPortTypesForNode((INode)createdElement.Node.m_Implementation, supportedTypes);
 
                 createdElement.CallOnDisable();
             }
 
             m_SupportedTypes.AddRange(supportedTypes);
-            m_SupportedTypes.Sort((a,b)=> Comparer<string>.Default.Compare(a.Name,b.Name));
+            m_SupportedTypes.Sort((a, b) => Comparer<string>.Default.Compare(a.Name, b.Name));
         }
 
         public void RecreateGraph(Type graphType)
@@ -499,6 +500,56 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 if (!sourceGraphType.IsInstanceOfType(Graph))
                     RecreateGraph(sourceGraphType);
             }
+        }
+
+        static void GetPortTypesForNode(INode node, HashSet<Type> hashSet)
+        {
+            if (node == null)
+                throw new ArgumentNullException(nameof(node));
+
+            if (hashSet == null)
+                throw new ArgumentNullException(nameof(hashSet));
+
+            foreach (var input in node.GetInputPorts())
+            {
+                if (input.dataType != null)
+                    hashSet.Add(input.dataType);
+            }
+
+            foreach (var output in node.GetOutputPorts())
+            {
+                if (output.dataType != null)
+                    hashSet.Add(output.dataType);
+            }
+        }
+
+        static void InitializeSupportedTypesFromContextNodeType(Type graphType, IGraphNodeCreationData nodeCreationData, Type type, HashSet<Type> supportedTypes)
+        {
+            foreach (var blockType in PublicGraphFactory.GetBlockTypes(graphType, type))
+            {
+                if (blockType.IsAbstract)
+                    continue;
+
+                var blockNode = (IUserNodeModelImp)((UserContextNodeModelImp)CreateContextFromBlockData(nodeCreationData, blockType, typeof(DummyContext))).blocks[0].m_Implementation;
+                if (blockNode != null)
+                {
+                    try
+                    {
+                        GetPortTypesForNode((INode)blockNode.Node.m_Implementation, supportedTypes);
+                    }
+                    finally
+                    {
+                        blockNode.CallOnDisable();
+                    }
+                }
+            }
+        }
+
+        internal static class TestAccessImp
+        {
+            public static void GetPortTypesForNode(INode node, HashSet<Type> hashSet) => GraphModelImp.GetPortTypesForNode(node, hashSet);
+            public static void InitializeSupportedTypesFromContextNodeType(Type graphType, IGraphNodeCreationData nodeCreationData, Type type, HashSet<Type> supportedTypes)
+                => GraphModelImp.InitializeSupportedTypesFromContextNodeType(graphType, nodeCreationData, type, supportedTypes);
         }
     }
 }

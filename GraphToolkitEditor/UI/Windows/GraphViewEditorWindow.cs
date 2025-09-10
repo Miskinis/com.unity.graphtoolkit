@@ -1055,6 +1055,11 @@ Would you like to save these changes?
             }
         }
 
+        internal void ShowOverlayMenuAtPosition(Vector2 menuPosition)
+        {
+            overlayCanvas.ShowOverlayMenuAtPosition(menuPosition);
+        }
+
         internal void ResetOverlayPositions()
         {
             foreach (var overlay in overlayCanvas.overlays)

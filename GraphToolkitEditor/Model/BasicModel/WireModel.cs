@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -409,5 +411,16 @@ namespace Unity.GraphToolkit.Editor
 
             ResetPortCache();
         }
+
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems => k_ContextualMenuItems;
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            ContextualMenuHelpers.insertNodeItem,
+            ContextualMenuHelpers.insertJunctionPointItem,
+            ContextualMenuHelpers.convertToPortalsItem,
+            ContextualMenuHelpers.deleteItem,
+            ContextualMenuHelpers.reorderWireItem,
+        };
     }
 }

@@ -360,63 +360,6 @@ namespace Unity.GraphToolkit.Editor
             }
         }
 
-        /// <inheritdoc />
-        protected override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
-        {
-            base.BuildContextualMenu(evt);
-
-            if (!(evt.currentTarget is Placemat placemat))
-                return;
-            evt.menu.AppendSeparator();
-
-            var selectedPlacemats = GraphView.GetSelection().OfTypeToList<PlacematModel, GraphElementModel>();
-
-            if (selectedPlacemats.Count == 1) // If there is only one placemat selected
-            {
-                evt.menu.AppendAction("Select All Placemat Contents",
-                    _ =>
-                    {
-                        SelectAllInside();
-                    });
-            }
-
-            var placemats = GraphView.GraphModel.PlacematModels;
-
-            // JOCE TODO: Check that *ALL* placemats are at the top or bottom. We should be able to do something otherwise.
-            var placematIsTop = placemats[^ 1] == placemat.PlacematModel;
-            var placematIsBottom = placemats[0] == placemat.PlacematModel;
-            var canBeReordered = placemats.Count > 1;
-
-
-            evt.menu.AppendSeparator();
-            evt.menu.AppendAction("Bring to Front",
-                _ => GraphView.Dispatch(new ChangePlacematOrderCommand(ZOrderMove.ToFront, selectedPlacemats)),
-                canBeReordered && !placematIsTop ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-            evt.menu.AppendAction("Bring Forward",
-                _ => GraphView.Dispatch(new ChangePlacematOrderCommand(ZOrderMove.Forward, selectedPlacemats)),
-                canBeReordered && !placematIsTop ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-            evt.menu.AppendAction("Send Backward",
-                _ => GraphView.Dispatch(new ChangePlacematOrderCommand(ZOrderMove.Backward, selectedPlacemats)),
-                canBeReordered && !placematIsBottom ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-            evt.menu.AppendAction("Send to Back",
-                _ => GraphView.Dispatch(new ChangePlacematOrderCommand(ZOrderMove.ToBack, selectedPlacemats)),
-                canBeReordered && !placematIsBottom ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-
-            evt.menu.AppendSeparator();
-            // Gather nodes here so that we don't recycle this code in the resize functions.
-            bool hoveringNodes = placemat.HasElementsOverThisPlacemat();
-
-            if (selectedPlacemats.Count == 1)
-            {
-                evt.menu.AppendAction("Smart Resize",
-                    _ =>
-                    {
-                        placemat.SmartResize();
-                    },
-                    hoveringNodes ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-            }
-        }
-
         /// <summary>
         /// Selects all elements inside the Placemat.
         /// </summary>

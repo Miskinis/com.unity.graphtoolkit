@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Unity.GraphToolkit.CSO;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using Unity.GraphToolkit.InternalBridge;
 using Unity.GraphToolsAuthoringFramework.InternalEditorBridge;
 using Unity.Profiling;
 using UnityEditor;
+using UnityEditor.ShortcutManagement;
 using UnityEngine;
 using UnityEngine.Pool;
 using UnityEngine.UIElements;
@@ -42,7 +44,7 @@ namespace Unity.GraphToolkit.Editor
     /// The <see cref="RootView"/> in which graphs are drawn.
     /// </summary>
     [UnityRestricted]
-    internal class GraphView : RootView, IDragSource, IHasItemLibrary
+    internal class GraphView : RootView, IDragSource, IHasItemLibrary, IHasContextualMenuItems
     {
         public const int frameBorder = 30;
 
@@ -386,6 +388,8 @@ namespace Unity.GraphToolkit.Editor
 
             if (DisplayMode == GraphViewDisplayMode.Interactive)
             {
+                // The ContentDragger must be created before the ContextualMenuManipulator, so that it has a chance to stop the propagation if the is a right click drag and prevent the contextual menu to show up.
+                ContentDragger = new ContentDragger();
                 ContextualMenuManipulator = new ContextualMenuManipulator(BuildContextualMenu);
 
                 Clickable = new Clickable(OnDoubleClick);
@@ -393,7 +397,6 @@ namespace Unity.GraphToolkit.Editor
                 Clickable.activators.Add(
                     new ManipulatorActivationFilter { button = MouseButton.LeftMouse, clickCount = 2 });
 
-                ContentDragger = new ContentDragger();
                 SelectionDragger = new SelectionDragger(this);
                 RectangleSelector = new RectangleSelector();
                 FreehandSelector = new FreehandSelector();
@@ -417,6 +420,8 @@ namespace Unity.GraphToolkit.Editor
                 RegisterCallback<ShortcutShowItemLibraryEvent>(OnShortcutShowItemLibraryEvent);
                 RegisterCallback<ShortcutConvertConstantAndVariableEvent>(OnShortcutConvertVariableAndConstantEvent);
                 RegisterCallback<ShortcutConvertWireToPortalEvent>(OnShortcutConvertWireToPortalEvent);
+                RegisterCallback<ShortcutCreateLocalSubgraphFromSelectionEvent>(OnShortcutCreateLocalSubgraphFromSelectionEvent);
+
                 // TODO OYT (GTF-804): For V1, access to the Align Items and Align Hierarchy features was removed as they are confusing to users. To be improved before making them accessible again.
                 // RegisterCallback<ShortcutAlignNodesEvent>(OnShortcutAlignNodesEvent);
                 // RegisterCallback<ShortcutAlignNodeHierarchiesEvent>(OnShortcutAlignNodeHierarchyEvent);
@@ -868,346 +873,1069 @@ namespace Unity.GraphToolkit.Editor
         /// </remarks>
         protected virtual void BuildContextualMenu(ContextualMenuPopulateEvent evt)
         {
+            // If the menu already has items, append a separator.
             if (evt.menu.MenuItems().Count > 0)
                 evt.menu.AppendSeparator();
 
-            var selection = GetSelection().ToList();
-            if (GraphModel.AllowSubgraphCreation && selection.Count == 1 && selection[0] is SubgraphNodeModel {CanBeExpanded: true} subgraphNodeModel)
+            var selectionSource = GetSelection();
+            var selection = new List<GraphElementModel>(selectionSource.Count);
+            for (var i = 0; i < selectionSource.Count; i++)
+            {
+                selection.Add(selectionSource[i]);
+            }
+
+            // Get the categorized menu items based on the selection.
+            var categorizedMenuItems = GetMenuItemsForSpecialSelectionCases(selection, evt) ?? ContextualMenuHelpers.GetMenuItemsForSelection(selection);
+
+            // If there are no categorized menu items, we can return early.
+            if (categorizedMenuItems == null)
+                return;
+
+            var menuActionMap = new Dictionary<string, Action>();
+            PopulateContextualMenuActionMap(menuActionMap, evt, selection);
+            ViewSelection.BuildContextualMenu(categorizedMenuItems, evt, menuActionMap);
+
+            if (Unsupported.IsDeveloperBuild())
+                AppendDeveloperBuildMenuActions(evt, selection);
+        }
+
+        // CONTEXTUAL MENU METHODS:
+        Dictionary<ContextualMenuCategory, List<ContextualMenuItem>> GetMenuItemsForSpecialSelectionCases(List<GraphElementModel> selection, ContextualMenuPopulateEvent evt)
+        {
+            // This method is used to get the contextual menu items for specific cases:
+            // - If the selection contains placeholders.
+            // - If the selection contains only wires.
+            // - If the user right-clicked on a placemat title or on an empty part of a placemat.
+            // - If the user right-clicked on an empty space in the graph view while there are graph elements selected.
+            // - If the user right-clicked on an empty space in the graph view while there is nothing selected graph.
+
+            if (selection == null)
+                return null;
+
+            var allWires = true;
+
+            for (var i = 0; i < selection.Count; i++)
+            {
+                if (selection[i] is not WireModel)
+                    allWires = false;
+
+                // If there is a placeholder in the selection, we only append the "Delete" menu item.
+                if (evt.target is not GraphView && selection[i] is IPlaceholder || selection[i] is IHasDeclarationModel { DeclarationModel: IPlaceholder })
+                    return ContextualMenuHelpers.CategorizeMenuItems(new[] { ContextualMenuHelpers.deleteItem });
+
+                // If there is a placemat in the selection, we only append placemat menu items:
+                // - If the user clicked on the placemat title
+                // - If the user clicked on an empty part of the placemat (not on a contained element)
+                if (selection[i] is PlacematModel placematModel)
+                {
+                    var placemat = placematModel.GetView<Placemat>(this);
+                    if (placemat == null)
+                        continue;
+
+                    var clickedOnPlacematTitle = placemat.ContainsPoint(placemat.WorldToLocal(evt.mousePosition));
+                    if (clickedOnPlacematTitle)
+                        return ContextualMenuHelpers.CategorizeMenuItems(placematModel.ContextualMenuItems);
+
+                    var clickedOnEmptyPartOfPlacemat = evt.target is GraphView && placemat.parent.layout.Contains(placemat.WorldToLocal(evt.mousePosition));
+                    if (clickedOnEmptyPartOfPlacemat)
+                        return ContextualMenuHelpers.CategorizeMenuItems(placematModel.ContextualMenuItems);
+                }
+            }
+
+            // If there are no selected elements OR the user right-clicked on an empty space, show the menu for the graph view.
+            if (selection.Count == 0 || evt.target is GraphView)
+                return ContextualMenuHelpers.CategorizeMenuItems(ContextualMenuItems);
+
+            // All selected elements are wires: show wire-specific menu items.
+            if (allWires && selection[0] is WireModel wireModel)
+                return ContextualMenuHelpers.CategorizeMenuItems(wireModel.ContextualMenuItems);
+
+            return null;
+        }
+
+        void AppendDeveloperBuildMenuActions(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            evt.menu.AppendSeparator();
+            evt.menu.AppendAction("Overlays/Save Positions", _ =>
+                (Window as GraphViewEditorWindow)?.SaveOverlayPositions());
+            evt.menu.AppendAction("Overlays/Set to Saved Positions", _ =>
+                (Window as GraphViewEditorWindow)?.RestoreOverlayPositions());
+            evt.menu.AppendAction("Overlays/Set to Default Positions", _ =>
+                (Window as GraphViewEditorWindow)?.ResetOverlayPositions());
+            evt.menu.AppendAction("Overlays/Clear Saved Positions", _ =>
+                (Window as GraphViewEditorWindow)?.HardResetOverlayPositions());
+            evt.menu.AppendAction("Refresh All UI", _ =>
+            {
+                using (var updater = GraphViewModel.GraphViewState.UpdateScope)
+                {
+                    updater.ForceCompleteUpdate();
+                }
+            });
+
+            if (selection.Count > 0)
+            {
+                evt.menu.AppendAction("Refresh Selected Element(s)",
+                    _ =>
+                    {
+                        using (var graphUpdater = GraphViewModel.GraphModelState.UpdateScope)
+                        {
+                            graphUpdater.MarkChanged(selection);
+                        }
+                    });
+            }
+
+            evt.menu.AppendAction("Log Graph IDs", _ =>
+            {
+                Debug.Log($"ToolStateComponent.CurrentGraph: {GraphTool.ToolState.CurrentGraph}");
+                var gmsRef = GraphViewModel.GraphModelState.GraphModel.GetGraphReference();
+                Debug.Log($"GraphModelStateComponent.GraphModel ref: {gmsRef}");
+            });
+        }
+
+        /// <summary>
+        /// Populates the contextual menu action map with actions for the graph view.
+        /// </summary>
+        /// <param name="menuActionMap">The contextual menu action map.</param>
+        /// <param name="evt">The <see cref="ContextualMenuPopulateEvent"/>.</param>
+        /// <param name="selection">The current selection of graph element models in the graph.</param>
+        /// <remarks>
+        /// This method maps <see cref="ContextualMenuItem"/>s' names to actions that can be executed when the user selects
+        /// the corresponding menu item in the contextual menu. It is called by the <see cref="BuildContextualMenu"/> method
+        /// to populate the contextual menu with actions that can be performed on the graph elements in the current selection.
+        /// You can override this method to add custom actions or modify existing ones.
+        /// </remarks>
+        protected virtual void PopulateContextualMenuActionMap(Dictionary<string, Action> menuActionMap, ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (menuActionMap == null)
+                return;
+
+            // ViewSelection menu items
+            ViewSelection.PopulateMenuActionMap(menuActionMap, evt);
+
+            // Common graph element items:
+            menuActionMap.Add(ContextualMenuHelpers.createPlacematItem.Name, () => AppendCreatePlacematMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.colorItem.Name, () => AppendColorMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.frameSelectionItem.Name, () => AppendFrameSelectionMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.alignAndDistributeElementsItem.Name, () => AppendAlignAndDistributeElementsMenuItems(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.createLocalSubgraphFromSelectionItem.Name, () => AppendCreateLocalSubgraphFromSelectionMenuItem(evt));
+
+            // GraphView menu items:
+            menuActionMap.Add(ContextualMenuHelpers.addNodeItem.Name, () => AppendAddNodeItemMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.createStickyNoteItem.Name, () => AppendCreateStickyNoteMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.createEmptyLocalSubgraphItem.Name, () => AppendCreateEmptyLocalSubgraph(evt));
+            menuActionMap.Add(ContextualMenuHelpers.showOverlayMenuItem.Name, () => AppendShowOverlayMenuMenuItem(evt));
+
+            // Nodes menu items:
+            menuActionMap.Add(ContextualMenuHelpers.deleteAndReconnectItem.Name, () => AppendDeleteAndReconnectMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.toggleCollapseItem.Name, () => AppendToggleCollapseMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.disableNodeItem.Name, () => AppendDisableNodeMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.disconnectAllWiresItem.Name, () => AppendDisconnectAllWiresMenuItem(evt, selection));
+            // TODO (GTF-2216): Implement the Edit Subtitle functionality.
+            // TODO: Implement the Bypass functionality.
+
+            // State nodes menu items:
+            menuActionMap.Add(ContextualMenuHelpers.createLocalTransitionMenuItem.Name, () => AppendCreateTransitionMenuItem(evt, selection, TransitionSupportKind.Local));
+            menuActionMap.Add(ContextualMenuHelpers.createOnEnterTransitionMenuItem.Name, () => AppendCreateTransitionMenuItem(evt, selection, TransitionSupportKind.OnEnter));
+            menuActionMap.Add(ContextualMenuHelpers.createSelfTransitionMenuItem.Name, () => AppendCreateTransitionMenuItem(evt, selection, TransitionSupportKind.Self));
+            menuActionMap.Add(ContextualMenuHelpers.setAsDefaultStateMenuItem.Name, () => AppendSetAsDefaultStateMenuItem(evt, selection));
+            // TODO (GTF-2242): Implement the Create Transition functionality.
+
+            // Subgraph nodes menu items:
+            menuActionMap.Add(ContextualMenuHelpers.extractContentsToPlacematItem.Name, () => AppendExtractContentsToPlacematMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.openAssetSubgraphItem.Name, () => AppendOpenSubgraphMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.openLocalSubgraphItem.Name, () => AppendOpenSubgraphMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.convertToAssetSubgraphItem.Name, () => AppendConvertToAssetSubgraphMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.unpackToLocalSubgraphItem.Name, () => AppendUnpackToLocalSubgraphMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.findAssetInProjectItem.Name, () => AppendFindAssetInProjectMenuItem(evt, selection));
+
+            // Variable and constant nodes menu items:
+            menuActionMap.Add(ContextualMenuHelpers.convertToConstantItem.Name, () => AppendConvertToConstantMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.convertToVariableItem.Name, () => AppendConvertToVariableMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.itemizeItem.Name, () => AppendItemizeMenuItem(evt, selection));
+
+            // Wire menu items:
+            menuActionMap.Add(ContextualMenuHelpers.insertNodeItem.Name, () => AppendInsertNodeMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.convertToPortalsItem.Name, () => AppendConvertToPortalsMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.reorderWireItem.Name, () => AppendReorderWireMenuItem(evt, selection));
+            // TODO: Implement the insert junction feature.
+
+            // Context and block nodes menu items:
+            menuActionMap.Add(ContextualMenuHelpers.addBlockItem.Name, () => AppendAddNodeItemMenuItem(evt, "Add Block"));
+            menuActionMap.Add(ContextualMenuHelpers.insertBlockAboveItem.Name, () => AppendInsertBlockItemMenuItem(evt, selection, true));
+            menuActionMap.Add(ContextualMenuHelpers.insertBlockBelowItem.Name, () => AppendInsertBlockItemMenuItem(evt, selection, false));
+            // TODO: Implement the "Convert to Block Subgraph" functionality.
+
+            // Sticky notes menu items:
+            menuActionMap.Add(ContextualMenuHelpers.fontSizeAndThemeItem.Name, () => AppendFontSizeAndThemeMenuItem(evt, selection));
+            // TODO: Implement the "Fit to Text" functionality. See: ContextualMenuHelpers.fitToTextItem
+
+            // Placemat menu items:
+            menuActionMap.Add(ContextualMenuHelpers.deleteAndSelectContentsItem.Name, () => AppendDeleteAndSelectContentsMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.smartResizeItem.Name, () => AppendSmartResizeMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.reorderPlacematItem.Name, () => AppendReorderPlacematMenuItems(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.selectAllPlacematContentsItem.Name, () => AppendSelectAllPlacematContentsMenuItem(evt, selection));
+        }
+
+        protected void AppendInsertBlockItemMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection, bool insertAbove, string itemName = "")
+        {
+            if (selection.Count > 1 || selection[0] is not BlockNodeModel blockNodeModel)
+            {
+                // If there are more than 1 selected element or the selected element is not a BlockNodeModel, don't append this menu item.
+                return;
+            }
+
+            var contextView = blockNodeModel.ContextNodeModel?.GetView<ContextNodeView>(this);
+            if (contextView == null)
+                return;
+
+            var menuItemName = string.IsNullOrEmpty(itemName) ? "Insert Block " + (insertAbove ? "Above" : "Below") : itemName;
+            var index = insertAbove ? blockNodeModel.GetIndex() : blockNodeModel.GetIndex() + 1;
+
+            evt.menu.AppendAction(L10n.Tr(menuItemName),
+                action =>
+                {
+                    Vector2 mousePosition = action?.eventInfo?.mousePosition ?? evt.mousePosition;
+                    contextView.ShowItemLibrary(mousePosition, index);
+                });
+        }
+
+        void AppendFontSizeAndThemeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var themesAreDifferent = false;
+            var fontSizesAreDifferent = false;
+
+            var firstTheme = "";
+            var firstFontSize = "";
+
+            var stickyNotes = new List<StickyNoteModel>(selection.Count);
+
+            for (var i = 0; i < selection.Count; i++)
+            {
+                // If the element is not a sticky note, don't append this menu item.
+                if (selection[i] is not StickyNoteModel stickyNoteModel)
+                    return;
+
+                stickyNotes.Add(stickyNoteModel);
+
+                // Check if the themes and font sizes are the same for all selected sticky notes.
+                if (i == 0)
+                {
+                    firstTheme = stickyNoteModel.Theme;
+                    firstFontSize = stickyNoteModel.TextSize;
+                    continue;
+                }
+
+                if (!themesAreDifferent && stickyNoteModel.Theme != firstTheme)
+                    themesAreDifferent = true;
+                if (!fontSizesAreDifferent && stickyNoteModel.TextSize != firstFontSize)
+                    fontSizesAreDifferent = true;
+            }
+
+            DropdownMenuAction.Status GetThemeStatus(DropdownMenuAction a)
+            {
+                if (themesAreDifferent)
+                {
+                    // Values are not all the same.
+                    return DropdownMenuAction.Status.Normal;
+                }
+
+                return stickyNotes[0].Theme == (a.userData as string) ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal;
+            }
+
+            DropdownMenuAction.Status GetSizeStatus(DropdownMenuAction a)
+            {
+                if (fontSizesAreDifferent)
+                {
+                    // Values are not all the same.
+                    return DropdownMenuAction.Status.Normal;
+                }
+
+                return stickyNotes[0].TextSize == (a.userData as string) ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal;
+            }
+
+            foreach (var value in StickyNote.GetSizes())
+            {
+                evt.menu.AppendAction(L10n.Tr("Font Size/" + value),
+                    menuAction => Dispatch(new UpdateStickyNoteTextSizeCommand(menuAction.userData as string, stickyNotes)),
+                    GetSizeStatus, value);
+            }
+
+            foreach (var value in StickyNote.GetThemes())
+            {
+                evt.menu.AppendAction(L10n.Tr("Color/" + value),
+                    menuAction => Dispatch(new UpdateStickyNoteThemeCommand(menuAction.userData as string, stickyNotes)),
+                    GetThemeStatus, value);
+            }
+        }
+
+        void AppendCreatePlacematMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var selectedVisibleGraphElements = new List<GraphElement>();
+            var allBlocks = true;
+            foreach (var elementModel in selection)
+            {
+                // If a graph element is not on the graph (eg: block nodes) or the graph element is a placemat, don't append this menu item.
+                if (elementModel is PlacematModel)
+                    return;
+
+                if (elementModel is WireModel)
+                    continue;
+
+                if (elementModel.NeedsContainer() || elementModel is BlockNodeModel)
+                    continue;
+
+                allBlocks = false;
+
+                var view = elementModel.GetView<GraphElement>(this);
+                if (view is { visible: true })
+                    selectedVisibleGraphElements.Add(view);
+            }
+
+            // If all selected elements are block nodes, don't append this menu item.
+            if (selection.Count > 0 && allBlocks)
+                return;
+
+            evt.menu.AppendMenuItemFromShortcutWithName<ShortcutCreatePlacematEvent>(GraphTool, selectedVisibleGraphElements.Count > 0 ? L10n.Tr("Create Placemat from Selection") : ShortcutCreatePlacematEvent.id, menuAction =>
+            {
+                Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
+
+                CreatePlacematFromGraphElements(selectedVisibleGraphElements, graphPosition);
+            });
+        }
+
+        void AppendColorMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var colorables = new List<GraphElementModel>();
+            var showAlpha = true;
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is WireModel)
+                    continue;
+
+                // If the graph element cannot have its color changed, don't append this menu item.
+                if (!elementModel.IsColorable() || elementModel is not IHasElementColor hasElementColor)
+                    return;
+
+                if (showAlpha && !hasElementColor.UseColorAlpha)
+                    showAlpha = false;
+
+                colorables.Add(elementModel);
+            }
+
+            evt.menu.AppendAction(L10n.Tr("Color/Change..."), _ =>
+            {
+                void ChangeNodesColor(Color pickedColor)
+                {
+                    Dispatch(new ChangeElementColorCommand(pickedColor, colorables));
+                }
+
+                var defaultColor = new Color(0.5f, 0.5f, 0.5f);
+                if (selection.Count == 1)
+                {
+                    var firstColorable = (IHasElementColor)colorables[0];
+                    if (firstColorable.ElementColor.HasUserColor)
+                        defaultColor = firstColorable.ElementColor.Color;
+                }
+
+                EditorBridge.ShowColorPicker(ChangeNodesColor, defaultColor, showAlpha);
+            });
+
+            evt.menu.AppendAction(L10n.Tr("Color/Reset"), _ =>
+            {
+                Dispatch(new ResetElementColorCommand(colorables));
+            });
+        }
+
+        void AppendFrameSelectionMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            evt.menu.AppendAction(CommandMenuItemNames.FrameSelected, _ =>
+            {
+                this.DispatchFrameSelectionCommand();
+            });
+        }
+
+        void AppendAlignAndDistributeElementsMenuItems(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            // If there are less than 2 elements selected, don't append these menu items.
+            if (selection.Count < 2)
+                return;
+
+            foreach (var elementModel in selection)
+            {
+                // Ignore wires, as they are not movable.
+                if (elementModel is WireModel)
+                    continue;
+
+                // If the graph element is not on the graph (eg: block nodes) or the graph element cannot be moved, don't append these menu items.
+                if (elementModel.NeedsContainer() || !elementModel.IsMovable() || elementModel is not IMovable)
+                    return;
+            }
+
+            evt.menu.AppendAction(L10n.Tr("Align Elements/Top"),
+                _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference.Top));
+            evt.menu.AppendAction(L10n.Tr("Align Elements/Bottom"),
+                _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference.Bottom));
+            evt.menu.AppendAction(L10n.Tr("Align Elements/Left"),
+                _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference.Left));
+            evt.menu.AppendAction(L10n.Tr("Align Elements/Right"),
+                _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference.Right));
+            evt.menu.AppendAction(L10n.Tr("Align Elements/Horizontal Center"),
+                _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference
+                    .HorizontalCenter));
+            evt.menu.AppendAction(L10n.Tr("Align Elements/Vertical Center"),
+                _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference
+                    .VerticalCenter));
+            evt.menu.AppendAction(L10n.Tr("Distribute Elements/Horizontal"),
+                _ => m_AutoDistributingHelper.SendDistributeCommand(PortOrientation.Horizontal));
+            evt.menu.AppendAction(L10n.Tr("Distribute Elements/Vertical"),
+                _ => m_AutoDistributingHelper.SendDistributeCommand(PortOrientation.Vertical));
+        }
+
+        protected void AppendAddNodeItemMenuItem(ContextualMenuPopulateEvent evt, string itemName = "")
+        {
+            var menuItemName = string.IsNullOrEmpty(itemName) ? GraphModel.IsStateMachineGraph ? "Create State" : "Add Node" : itemName;
+
+            evt.menu.AppendMenuItemFromShortcutWithName<ShortcutShowItemLibraryEvent>(GraphTool,  L10n.Tr(menuItemName), menuAction =>
+            {
+                Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                ShowItemLibrary(mousePosition);
+            });
+        }
+
+        void AppendCreateStickyNoteMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            evt.menu.AppendMenuItemFromShortcut<ShortcutCreateStickyNoteEvent>(GraphTool, menuAction =>
+            {
+                Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
+
+                Dispatch(new CreateStickyNoteCommand(graphPosition));
+            });
+        }
+
+        void AppendCreateEmptyLocalSubgraph(ContextualMenuPopulateEvent evt)
+        {
+            if (!GraphModel.AllowSubgraphCreation)
+                return;
+
+            var menuItemName = "Create Empty {0}Local Subgraph";
+
+            if (GraphModel.SubgraphTemplates == null || GraphModel.SubgraphTemplates.Count == 0)
+            {
+                // If there are no subgraph templates, append a menu item to create a local subgraph.
+                evt.menu.AppendAction(L10n.Tr(string.Format(menuItemName, "")),
+                    menuAction =>
+                    {
+                        Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                        Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
+                        Dispatch(new CreateLocalSubgraphFromSelectionCommand(new List<GraphElementModel>(), this, graphPosition));
+                    });
+            }
+            else
+            {
+                // If there are subgraph templates, append a menu item for each template.
+                foreach (var graphTemplate in GraphModel.SubgraphTemplates)
+                {
+                    // If there is only one template possible, we don't need to display its name.
+                    evt.menu.AppendAction(L10n.Tr(string.Format(menuItemName, GraphModel.SubgraphTemplates.Count < 2 ? "" : graphTemplate.GraphTypeName + " ")),
+                        menuAction =>
+                        {
+                            Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                            Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
+                            Dispatch(new CreateLocalSubgraphFromSelectionCommand(new List<GraphElementModel>(), this, graphPosition, template: graphTemplate));
+                        });
+                }
+            }
+        }
+
+        void AppendShowOverlayMenuMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            if (Window is not GraphViewEditorWindow graphViewEditorWindow)
+                return;
+
+            var binding = new ShortcutBinding(new KeyCombination(KeyCode.BackQuote));
+            evt.menu.AppendAction(L10n.Tr("Show Overlay Menu") + " " + binding.GetShortcutMenuString(), menuAction =>
+            {
+                Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                graphViewEditorWindow.ShowOverlayMenuAtPosition(mousePosition);
+            });
+        }
+
+        void AppendToggleCollapseMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var nodes = new List<AbstractNodeModel>();
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not AbstractNodeModel node)
+                    continue;
+
+                if (!elementModel.IsCollapsible() || elementModel is not ICollapsible)
+                    return;
+
+                nodes.Add(node);
+            }
+
+            evt.menu.AppendMenuItemFromShortcutWithName<ShortcutToggleNodeCollapseEvent>(GraphTool, L10n.Tr("Toggle Collapse"), _ =>
+            {
+                var firstValue = ((ICollapsible)nodes[0]).Collapsed;
+                Dispatch(new CollapseNodeCommand(!firstValue, nodes));
+            });
+        }
+
+        void AppendDeleteAndReconnectMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            // TODO GTF-1920: Implement the expected Delete and Reconnect feature.
+            if (!GraphModel.AllowNodeBypass)
+                return;
+
+            var nodes = new List<AbstractNodeModel>();
+            var ioConnectedNodes = new List<InputOutputPortsNodeModel>();
+
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not AbstractNodeModel node)
+                    continue;
+
+                nodes.Add(node);
+
+                if (node is not InputOutputPortsNodeModel ioNode || ioNode.GetConnectedWires().Count() == 0)
+                    continue;
+
+                var hasConnectedInput = false;
+                foreach (var input in ioNode.InputsByDisplayOrder)
+                {
+                    if (input.IsConnected())
+                    {
+                        hasConnectedInput = true;
+                        break;
+                    }
+                }
+
+                bool hasConnectedOutput = false;
+                foreach (var output in ioNode.OutputsByDisplayOrder)
+                {
+                    if (output.IsConnected())
+                    {
+                        hasConnectedOutput = true;
+                        break;
+                    }
+                }
+
+                if (hasConnectedInput && hasConnectedOutput)
+                {
+                    ioConnectedNodes.Add(ioNode);
+                }
+            }
+
+            evt.menu.AppendAction(L10n.Tr("Delete and reconnect"), _ =>
+            {
+                // TODO: The current Bypass feature implementation is Delete and reconnect. When the expected Bypass feature is implemented, this will need to be updated.
+                Dispatch(new BypassNodesCommand(ioConnectedNodes, nodes));
+            }, ioConnectedNodes.Count == 0 ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
+        }
+
+        void AppendDisableNodeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var nodes = new List<AbstractNodeModel>();
+            var willDisable = false;
+            var isContext = true;
+            var isBlock = true;
+
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not AbstractNodeModel node)
+                    continue;
+
+                // If the graph element cannot be disabled, don't append this menu item.
+                if (!elementModel.IsDisableable())
+                    return;
+
+                // If all nodes are disabled, we set the item name to "Enable nodes". If at least 1 is enabled, we set the item name to "Disable nodes".
+                if (node.State == ModelState.Enabled)
+                    willDisable = true;
+
+                if (node is not ContextNodeModel)
+                    isContext = false;
+
+                if (node is not BlockNodeModel)
+                    isBlock = false;
+
+                nodes.Add(node);
+            }
+
+            var isPlural = nodes.Count > 1;
+            var nodeWord = (isContext ? "Context" : isBlock ? "Block" : "Node") + (isPlural ? "s" : "");
+            evt.menu.AppendAction(L10n.Tr(willDisable ? "Disable " + nodeWord : "Enable " + nodeWord), _ =>
+            {
+                Dispatch(new ChangeNodeStateCommand(willDisable ? ModelState.Disabled : ModelState.Enabled, nodes.Where(t => t.IsDisableable()).ToList()));
+            });
+        }
+
+        void AppendDisconnectAllWiresMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var connectedNodes = new List<AbstractNodeModel>();
+
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not AbstractNodeModel node || node.GetConnectedWires().Count() == 0)
+                    continue;
+
+                connectedNodes.Add(node);
+            }
+
+            evt.menu.AppendMenuItemFromShortcutWithName<ShortcutDisconnectWiresEvent>(GraphTool, L10n.Tr("Disconnect All Wires"), _ =>
+            {
+                Dispatch(new DisconnectWiresCommand(connectedNodes));
+            }, connectedNodes.Count == 0 ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
+        }
+
+        void AppendSetAsDefaultStateMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (!GraphModel.IsStateMachineGraph || selection.Count > 1 || selection[0] is not StateModel stateModel)
+                return;
+
+            evt.menu.AppendAction(L10n.Tr("Set as Default State"), _ =>
+            {
+                Dispatch(new SetEntryPointCommand(GraphModel, stateModel, !stateModel.IsEntryPoint));
+            }, stateModel.IsEntryPoint ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+        }
+
+        void AppendCreateTransitionMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection, TransitionSupportKind transitionSupportKind)
+        {
+            if (!GraphModel.IsStateMachineGraph)
+                return;
+
+            var itemName = transitionSupportKind switch
+            {
+                TransitionSupportKind.OnEnter => "Create OnEnter Transition",
+                TransitionSupportKind.Self => "Create Self Transition",
+                _ => "Create Local Transition"
+            };
+
+            evt.menu.AppendAction(L10n.Tr(itemName), _ =>
+            {
+                foreach (var elementModel in selection)
+                {
+                    if (elementModel is not StateModel stateModel)
+                        continue;
+
+                    Dispatch(new CreateSingleStateTransitionSupportCommand(GraphModel, stateModel, transitionSupportKind));
+                }
+            });
+        }
+
+        void AppendCreateLocalSubgraphFromSelectionMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            var data = SubgraphFromSelectionAction.CollectData(this, null, null);
+
+            if (!data.IsValid)
+                return;
+
+            var menuItemName = data.shouldConvertToPlacemat ? "Convert to {0}Local Subgraph" : "Create {0}Local Subgraph from Selection";
+
+            if (GraphModel.SubgraphTemplates == null || GraphModel.SubgraphTemplates.Count == 0)
+            {
+                // If there are no subgraph templates, append a menu item to convert to a local subgraph.
+                evt.menu.AppendMenuItemFromShortcutWithName<ShortcutCreateLocalSubgraphFromSelectionEvent>(GraphTool, L10n.Tr(string.Format(menuItemName, "")), menuAction =>
+                {
+                    Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                    Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
+                    Dispatch(new CreateLocalSubgraphFromSelectionCommand(data.elementsToInclude, this,
+                        graphPosition, null, null,
+                        data.defaultName,
+                        data.elementsToDelete));
+                });
+            }
+            else
+            {
+                // If there are subgraph templates, append a menu item for each template.
+                foreach (var graphTemplate in GraphModel.SubgraphTemplates)
+                {
+                    evt.menu.AppendMenuItemFromShortcutWithName<ShortcutCreateLocalSubgraphFromSelectionEvent>(GraphTool, L10n.Tr(string.Format(menuItemName, GraphModel.SubgraphTemplates.Count < 2 ? "" : graphTemplate.GraphTypeName + " ")), menuAction =>
+                    {
+                        Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                        Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
+                        Dispatch(new CreateLocalSubgraphFromSelectionCommand(data.elementsToInclude, this,
+                            graphPosition, null, graphTemplate, data.defaultName, data.elementsToDelete));
+                    });
+                }
+            }
+        }
+
+        void AppendExtractContentsToPlacematMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (!GraphModel.AllowSubgraphCreation)
+                return;
+
+            var subgraphNodes = new List<SubgraphNodeModel>();
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not SubgraphNodeModel subgraphNodeModel)
+                    continue;
+
+                if (!subgraphNodeModel.CanBeExpanded)
+                    return;
+
+                subgraphNodes.Add(subgraphNodeModel);
+            }
+
+            foreach (var subgraphNodeModel in subgraphNodes)
             {
                 evt.menu.AppendMenuItemFromShortcut<ShortcutExtractContentsToPlacematEvent>(GraphTool, menuAction =>
                 {
                     Dispatch(new ExpandSubgraphCommand(GraphModel, subgraphNodeModel, ContentViewContainer.WorldToLocal(menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition)));
                 }, subgraphNodeModel.GetSubgraphModel() is null ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
                 evt.menu.AppendSeparator();
-
-                AddFindAssociateFileMenuItem(evt, subgraphNodeModel.GetSubgraphModel()?.GraphObject);
             }
+        }
 
-            if (!selection.Any(e => e is IPlaceholder || e is IHasDeclarationModel hasDeclarationModel && hasDeclarationModel.DeclarationModel is IPlaceholder))
+        void AppendOpenSubgraphMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (!GraphModel.AllowSubgraphCreation || selection.Count != 1 || selection[0] is not SubgraphNodeModel subgraphNodeModel)
+                return;
+
+            var subgraphNode = subgraphNodeModel.GetView<SubgraphNodeView>(this);
+            if (subgraphNode == null)
+                return;
+
+            var menuItemName = "Open " + (subgraphNodeModel.IsReferencingLocalSubgraph ? "Local" : "Asset") + " Subgraph";
+            evt.menu.AppendAction(L10n.Tr(menuItemName), _ =>
             {
-                var selectedGraphElements = selection.Where(t => !(t is WireModel)).Select(m => m.GetView<GraphElement>(this)).Where(v => v != null && v.visible).ToList();
-                if (selection.Count != 1 || selection[0] is not PlacematModel)
-                {
-                    evt.menu.AppendMenuItemFromShortcutWithName<ShortcutShowItemLibraryEvent>(GraphTool, "Create Node", menuAction =>
-                    {
-                        Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
-                        ShowItemLibrary(mousePosition);
-                    });
+                subgraphNode.OpenSubgraph();
+            });
+        }
 
-                    evt.menu.AppendMenuItemFromShortcut<ShortcutCreatePlacematEvent>( GraphTool, menuAction =>
-                    {
-                        Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
-                        Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
-
-                        CreatePlacematFromGraphElements(selectedGraphElements, graphPosition);
-                    });
-                    evt.menu.AppendMenuItemFromShortcut<ShortcutCreateStickyNoteEvent>( GraphTool, menuAction =>
-                    {
-                        Vector2 mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
-                        Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
-
-                        Dispatch(new CreateStickyNoteCommand(graphPosition));
-                    });
-                }
-
-                if (selection.Count != 0)
-                {
-                    /* Actions on selection */
-
-                    evt.menu.AppendSeparator();
-
-                    bool hasElementsOnGraph = selectedGraphElements.Count(t => !t.GraphElementModel.NeedsContainer()) > 1;
-
-                    if (hasElementsOnGraph)
-                    {
-                        // TODO OYT (GTF-804): For V1, access to the Align Items and Align Hierarchy features was removed as they are confusing to users. To be improved before making them accessible again.
-                        // var itemName = ShortcutHelper.CreateShortcutMenuItemEntry("Align Elements/Align Items", GraphTool.Name, ShortcutAlignNodesEvent.id);
-                        // evt.menu.AppendAction(itemName, _ =>
-                        // {
-                        //     Dispatch(new AlignNodesCommand(this, false, GetSelection()));
-                        // });
-                        //
-                        // itemName = ShortcutHelper.CreateShortcutMenuItemEntry("Align Elements/Align Hierarchy", GraphTool.Name, ShortcutAlignNodeHierarchiesEvent.id);
-                        // evt.menu.AppendAction(itemName, _ =>
-                        // {
-                        //     Dispatch(new AlignNodesCommand(this, true, GetSelection()));
-                        // });
-
-                        evt.menu.AppendAction("Align Elements/Top",
-                            _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference.Top));
-
-                        evt.menu.AppendAction("Align Elements/Bottom",
-                            _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference.Bottom));
-
-                        evt.menu.AppendAction("Align Elements/Left",
-                            _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference.Left));
-
-                        evt.menu.AppendAction("Align Elements/Right",
-                            _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference.Right));
-
-                        evt.menu.AppendAction("Align Elements/Horizontal Center",
-                            _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference
-                                .HorizontalCenter));
-
-                        evt.menu.AppendAction("Align Elements/Vertical Center",
-                            _ => m_AutoAlignmentHelper.SendAlignCommand(AutoAlignmentHelper.AlignmentReference
-                                .VerticalCenter));
-
-                        evt.menu.AppendAction("Distribute Elements/Horizontal",
-                            _ => m_AutoDistributingHelper.SendDistributeCommand(PortOrientation.Horizontal));
-
-                        evt.menu.AppendAction("Distribute Elements/Vertical",
-                            _ => m_AutoDistributingHelper.SendDistributeCommand(PortOrientation.Vertical));
-                    }
-
-                    var nodes = selection.OfType<AbstractNodeModel>().ToList();
-                    if (nodes.Count > 0)
-                    {
-                        var connectedNodes = nodes
-                            .Where(m => m.GetConnectedWires().Any())
-                            .ToList();
-
-                        evt.menu.AppendMenuItemFromShortcutWithName<ShortcutDisconnectWiresEvent>(GraphTool, "Disconnect All Wires", _ =>
-                        {
-                            Dispatch(new DisconnectWiresCommand(connectedNodes));
-                        }, connectedNodes.Count == 0 ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
-
-                        var ioConnectedNodes = connectedNodes
-                            .OfType<InputOutputPortsNodeModel>()
-                            .Where(x => x.InputsByDisplayOrder.Any(y => y.IsConnected()) &&
-                                x.OutputsByDisplayOrder.Any(y => y.IsConnected())).ToList();
-
-                        if (GraphModel.AllowNodeBypass)
-                        {
-                            evt.menu.AppendAction("Bypass Nodes", _ =>
-                            {
-                                Dispatch(new BypassNodesCommand(ioConnectedNodes, nodes));
-                            }, ioConnectedNodes.Count == 0 ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
-                        }
-
-                        var canDisable = nodes.Any(n => n.IsDisableable());
-                        var willDisable = nodes.Any(n => n.State == ModelState.Enabled && n.IsDisableable());
-                        var moreThanOne = nodes.Select(n => n.State == ModelState.Enabled).Skip(1).Any();
-
-                        var nodeWord = moreThanOne ? "Nodes" : "Node";
-                        evt.menu.AppendAction(willDisable ? "Disable " + nodeWord : "Enable " + nodeWord, _ =>
-                        {
-                            Dispatch(new ChangeNodeStateCommand(willDisable ? ModelState.Disabled : ModelState.Enabled, nodes.Where(t => t.IsDisableable()).ToList()));
-                        }, canDisable ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-                    }
-
-                    if (selection.Count == 2)
-                    {
-                        // PF: FIXME check conditions correctly for this actions (exclude single port nodes, check if already connected).
-                        if (selection.FirstOrDefault(x => x is WireModel) is WireModel wireModel &&
-                            selection.FirstOrDefault(x => x is InputOutputPortsNodeModel) is InputOutputPortsNodeModel nodeModel)
-                        {
-                            evt.menu.AppendAction("Insert Node on Wire", _ => Dispatch(new SplitWireAndInsertExistingNodeCommand(wireModel, nodeModel)),
-                                _ => DropdownMenuAction.Status.Normal);
-                        }
-                    }
-
-                    var variableNodes = nodes.OfType<VariableNodeModel>().ToList();
-                    var constants = nodes.OfType<ConstantNodeModel>().ToList();
-                    if (variableNodes.Count > 0)
-                    {
-                        // TODO JOCE We might want to bring the concept of Get/Set variable from VS down to GTF
-                        evt.menu.AppendMenuItemFromShortcutWithName<ShortcutConvertConstantAndVariableEvent>(GraphTool, "Variable/Convert",
-                            _ => Dispatch(new ConvertConstantNodesAndVariableNodesCommand(null, variableNodes)),
-                            variableNodes.Any(v => v.CanConvertToConstant()) ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-
-                        evt.menu.AppendAction("Variable/Itemize",
-                            _ => Dispatch(new ItemizeNodeCommand(variableNodes.OfType<ISingleOutputPortNodeModel>().ToList())),
-                            variableNodes.Any(v => v.CanBeItemized()) ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-                    }
-
-                    if (constants.Count > 0)
-                    {
-                        evt.menu.AppendMenuItemFromShortcutWithName<ShortcutConvertConstantAndVariableEvent>(GraphTool, "Constant/Convert",
-                            _ => Dispatch(new ConvertConstantNodesAndVariableNodesCommand(constants, null)));
-
-                        evt.menu.AppendAction("Constant/Itemize",
-                            _ => Dispatch(new ItemizeNodeCommand(constants.OfType<ISingleOutputPortNodeModel>().ToList())),
-                            constants.Any(v => v.CanBeItemized()) ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-                    }
-
-                    if (GraphModel.AllowPortalCreation)
-                    {
-                        var portals = nodes.OfType<WirePortalModel>().ToList();
-                        if (portals.Count > 0)
-                        {
-                            var canCreateOpposite = new List<WirePortalModel>();
-                            var canRevertToWire = new List<WirePortalModel>();
-                            foreach (var portal in portals)
-                            {
-                                if (portal.CanCreateOppositePortal())
-                                    canCreateOpposite.Add(portal);
-
-                                if (portal.CanRevertToWire())
-                                    canRevertToWire.Add(portal);
-                            }
-
-                            evt.menu.AppendAction("Create Opposite Portal",
-                                _ =>
-                                {
-                                    Dispatch(new CreateOppositePortalCommand(canCreateOpposite));
-                                }, canCreateOpposite.Count > 0 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-                            evt.menu.AppendAction("Revert to Wire",
-                                _ =>
-                                {
-                                    Dispatch(new RevertPortalsToWireCommand(portals));
-                                }, canRevertToWire.Count > 0 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-                            evt.menu.AppendAction("Revert All to Wires",
-                                _ =>
-                                {
-                                    Dispatch(new RevertAllPortalsToWireCommand(portals));
-                                }, canRevertToWire.Count > 0 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-                        }
-                    }
-
-                    var colorables = new List<GraphElementModel>();
-                    foreach (var model in selection)
-                    {
-                        if (model.IsColorable() && model is IHasElementColor)
-                            colorables.Add(model);
-                    }
-
-                    if (colorables.Any())
-                    {
-                        evt.menu.AppendAction("Color/Change...", _ =>
-                        {
-                            void ChangeNodesColor(Color pickedColor)
-                            {
-                                Dispatch(new ChangeElementColorCommand(pickedColor, colorables));
-                            }
-
-                            var defaultColor = new Color(0.5f, 0.5f, 0.5f);
-                            if (colorables.Count == 1)
-                            {
-                                var firstColorable = (IHasElementColor)colorables[0];
-                                if (firstColorable.ElementColor.HasUserColor)
-                                    defaultColor = firstColorable.ElementColor.Color;
-                            }
-
-                            bool showAlpha = colorables.All(t => ((IHasElementColor)t).UseColorAlpha);
-
-                            EditorBridge.ShowColorPicker(ChangeNodesColor, defaultColor, showAlpha);
-                        });
-
-                        evt.menu.AppendAction("Color/Reset", _ =>
-                        {
-                            Dispatch(new ResetElementColorCommand(colorables));
-                        });
-                    }
-                    else
-                    {
-                        evt.menu.AppendAction("Color", _ => {}, _ => DropdownMenuAction.Status.Disabled);
-                    }
-
-                    if (GraphModel.AllowPortalCreation)
-                    {
-                        var wires = selection.OfType<WireModel>().ToList();
-                        if (wires.Count > 0)
-                        {
-                            evt.menu.AppendSeparator();
-
-                            var wireData = Wire.GetPortalsWireData(wires, this);
-                            evt.menu.AppendMenuItemFromShortcutWithName<ShortcutConvertWireToPortalEvent>(GraphTool, "Add Portals", _ =>
-                            {
-                                Dispatch(new ConvertWiresToPortalsCommand(wireData, this));
-                            });
-                        }
-                    }
-
-                    var stickyNotes = selection.OfType<StickyNoteModel>().ToList();
-
-                    if (stickyNotes.Count > 0)
-                    {
-                        evt.menu.AppendSeparator();
-
-                        DropdownMenuAction.Status GetThemeStatus(DropdownMenuAction a)
-                        {
-                            if (stickyNotes.Any(noteModel => noteModel.Theme != stickyNotes.First().Theme))
-                            {
-                                // Values are not all the same.
-                                return DropdownMenuAction.Status.Normal;
-                            }
-
-                            return stickyNotes.First().Theme == (a.userData as string) ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal;
-                        }
-
-                        DropdownMenuAction.Status GetSizeStatus(DropdownMenuAction a)
-                        {
-                            if (stickyNotes.Any(noteModel => noteModel.TextSize != stickyNotes.First().TextSize))
-                            {
-                                // Values are not all the same.
-                                return DropdownMenuAction.Status.Normal;
-                            }
-
-                            return stickyNotes.First().TextSize == (a.userData as string) ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal;
-                        }
-
-                        foreach (var value in StickyNote.GetThemes())
-                        {
-                            evt.menu.AppendAction("Sticky Note Theme/" + value,
-                                menuAction => Dispatch(new UpdateStickyNoteThemeCommand(menuAction.userData as string, stickyNotes)),
-                                GetThemeStatus, value);
-                        }
-
-                        foreach (var value in StickyNote.GetSizes())
-                        {
-                            evt.menu.AppendAction("Sticky Note Text Size/" + value,
-                                menuAction => Dispatch(new UpdateStickyNoteTextSizeCommand(menuAction.userData as string, stickyNotes)),
-                                GetSizeStatus, value);
-                        }
-                    }
-                }
-            }
-            ViewSelection?.BuildContextualMenu(evt);
-
-            if (Unsupported.IsDeveloperBuild())
+        void AppendConvertToAssetSubgraphMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            if (!GraphModel.AllowSubgraphCreation)
+                return;
+            if (GraphModel.SubgraphTemplates == null || GraphModel.SubgraphTemplates.Count == 0)
             {
-                evt.menu.AppendSeparator();
-
-                evt.menu.AppendAction("Overlays/Save Positions", _ =>
-                    (Window as GraphViewEditorWindow)?.SaveOverlayPositions());
-
-                evt.menu.AppendAction("Overlays/Set to Saved Positions", _ =>
-                    (Window as GraphViewEditorWindow)?.RestoreOverlayPositions());
-
-                evt.menu.AppendAction("Overlays/Set to Default Positions", _ =>
-                    (Window as GraphViewEditorWindow)?.ResetOverlayPositions());
-
-                evt.menu.AppendAction("Overlays/Clear Saved Positions", _ =>
-                    (Window as GraphViewEditorWindow)?.HardResetOverlayPositions());
-
-                evt.menu.AppendAction("Refresh All UI", _ =>
-                {
-                    using (var updater = GraphViewModel.GraphViewState.UpdateScope)
-                    {
-                        updater.ForceCompleteUpdate();
-                    }
-                });
-
-                if (selection.Any())
-                {
-                    evt.menu.AppendAction("Refresh Selected Element(s)",
-                        _ =>
-                        {
-                            using (var graphUpdater = GraphViewModel.GraphModelState.UpdateScope)
-                            {
-                                graphUpdater.MarkChanged(selection);
-                            }
-                        });
-                }
-
-                evt.menu.AppendAction("Log Graph IDs", _ =>
-                {
-                    Debug.Log($"ToolStateComponent.CurrentGraph: {GraphTool.ToolState.CurrentGraph}");
-                    var gmsRef = GraphViewModel.GraphModelState.GraphModel.GetGraphReference();
-                    Debug.Log($"GraphModelStateComponent.GraphModel ref: {gmsRef}");
-                });
+                AppendConvertToAssetSubgraphAction(null);
             }
+            else
+            {
+                foreach (var graphTemplate in GraphModel.SubgraphTemplates)
+                {
+                    AppendConvertToAssetSubgraphAction(graphTemplate);
+                }
+            }
+
+            return;
+
+            void AppendConvertToAssetSubgraphAction(GraphTemplate template)
+            {
+                var data = SubgraphFromSelectionAction.CollectData(this, null, template?.GraphModelType ?? GraphModel.GetType());
+                if (!data.IsValid)
+                    return;
+
+                var menuItemName = "Convert to {0}Asset Subgraph" + (data.localSubgraphNodes.Count > 1 ? "s" : "") + "...";
+                evt.menu.AppendAction(L10n.Tr(string.Format(menuItemName, GraphModel.SubgraphTemplates?.Count < 2 || template == null ? "" : template.GraphTypeName + " ")),
+                    _ => Dispatch(new ConvertLocalToAssetSubgraphCommand(data.localSubgraphNodes, template)));
+            }
+        }
+
+        void AppendUnpackToLocalSubgraphMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            if (!GraphModel.AllowSubgraphCreation)
+                return;
+
+            if (GraphModel.SubgraphTemplates == null || GraphModel.SubgraphTemplates.Count == 0)
+            {
+                AppendUnpackToLocalSubgraphAction(null);
+            }
+            else
+            {
+                foreach (var graphTemplate in GraphModel.SubgraphTemplates)
+                {
+                    AppendUnpackToLocalSubgraphAction(graphTemplate);
+                }
+            }
+
+            return;
+
+            void AppendUnpackToLocalSubgraphAction(GraphTemplate template)
+            {
+                var data = SubgraphFromSelectionAction.CollectData(this, null, template?.GraphModelType ?? GraphModel.GetType());
+                if (!data.IsValid)
+                    return;
+
+                var menuItemName = "Unpack to {0}Local Subgraph" + (data.assetSubgraphNodes.Count > 1 ? "s" : "");
+                evt.menu.AppendAction(L10n.Tr(string.Format(menuItemName, GraphModel.SubgraphTemplates?.Count < 2 || template == null ? "" : template.GraphTypeName + " ")),
+                    _ => Dispatch(new ConvertAssetToLocalSubgraphCommand(data.assetSubgraphNodes, template)));
+            }
+        }
+
+        void AppendFindAssetInProjectMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (!GraphModel.AllowSubgraphCreation || selection.Count != 1 || selection[0] is not SubgraphNodeModel subgraphNodeModel)
+                return;
+
+            var associateFileObject = subgraphNodeModel.GetSubgraphModel()?.GraphObject;
+            // Only add the menu item if the asset can be found in the Project Window and is a main asset.
+            if (associateFileObject is null ||
+                !AssetDatabase.IsMainAsset(associateFileObject) ||
+                !AssetDatabaseHelper.TryGetGUIDAndLocalFileIdentifier(associateFileObject, out _, out _))
+                return;
+
+            evt.menu.AppendAction(L10n.Tr("Find Asset in Project"), _ =>
+            {
+                EditorUtility.FocusProjectWindow();
+                Selection.activeObject = associateFileObject;
+                EditorGUIUtility.PingObject(associateFileObject);
+            });
+        }
+
+        void AppendConvertToConstantMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var variableNodes = new List<VariableNodeModel>();
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not AbstractNodeModel)
+                    continue;
+
+                // If a graph element is not a variable node or a selected variable node cannot be converted to a constant, don't append this menu item.
+                if (elementModel is not VariableNodeModel variableNode || !variableNode.CanConvertToConstant() || GraphModel.GetConstantType(variableNode.DataType) == null)
+                    return;
+
+                variableNodes.Add(variableNode);
+            }
+
+            evt.menu.AppendMenuItemFromShortcutWithName<ShortcutConvertConstantAndVariableEvent>(GraphTool, L10n.Tr("Convert to Constant"),
+                _ => Dispatch(new ConvertConstantNodesAndVariableNodesCommand(null, variableNodes)));
+        }
+
+        void AppendConvertToVariableMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var constantNodes = new List<ConstantNodeModel>();
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not AbstractNodeModel)
+                    continue;
+
+                // If a graph element is not a constant node, don't append this menu item.
+                if (elementModel is not ConstantNodeModel constantNode)
+                    return;
+
+                constantNodes.Add(constantNode);
+            }
+
+            evt.menu.AppendMenuItemFromShortcutWithName<ShortcutConvertConstantAndVariableEvent>(GraphTool, L10n.Tr("Convert to Variable"),
+                _ => Dispatch(new ConvertConstantNodesAndVariableNodesCommand(constantNodes, null)));
+        }
+
+        void AppendItemizeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var singleOutputPortNodes = new List<ISingleOutputPortNodeModel>();
+            var canBeItemized = true;
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not NodeModel nodeModel)
+                    continue;
+
+                // If a graph element is not a constant node, don't append this menu item.
+                if (elementModel is not ISingleOutputPortNodeModel singleOutputPortNode)
+                    return;
+
+                if (canBeItemized && !nodeModel.CanBeItemized())
+                    canBeItemized = false;
+
+                singleOutputPortNodes.Add(singleOutputPortNode);
+            }
+
+            evt.menu.AppendAction(L10n.Tr("Itemize"),
+                _ => Dispatch(new ItemizeNodeCommand(singleOutputPortNodes)),
+                canBeItemized ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendReorderWireMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (selection.Count != 1 || selection[0] is not WireModel wireModel || selection[0] is TransitionSupportModel || wireModel.FromPort is not { HasReorderableWires: true })
+                return;
+
+            var siblingWires = wireModel.FromPort.GetConnectedWires().ToList();
+            var siblingWiresCount = siblingWires.Count;
+
+            var index = siblingWires.IndexOf(wireModel);
+            evt.menu.AppendAction("Reorder Wire/Move First",
+                _ => ReorderWire(ReorderType.MoveFirst),
+                siblingWiresCount > 1 && index > 0 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            evt.menu.AppendAction("Reorder Wire/Move Up",
+                _ => ReorderWire(ReorderType.MoveUp),
+                siblingWiresCount > 1 && index > 0 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            evt.menu.AppendAction("Reorder Wire/Move Down",
+                _ => ReorderWire(ReorderType.MoveDown),
+                siblingWiresCount > 1 && index < siblingWiresCount - 1 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            evt.menu.AppendAction("Reorder Wire/Move Last",
+                _ => ReorderWire(ReorderType.MoveLast),
+                siblingWiresCount > 1 && index < siblingWiresCount - 1 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+
+            void ReorderWire(ReorderType reorderType)
+            {
+                Dispatch(new ReorderWireCommand(wireModel, reorderType));
+            }
+        }
+
+        void AppendConvertToPortalsMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (!GraphModel.AllowPortalCreation)
+                return;
+
+            var wires = new List<WireModel>();
+            var hasNullOrMissingPort = false;
+            foreach (var elementModel in selection)
+            {
+                // If the graph element is not a wire, don't append this menu item.
+                if (elementModel is not WireModel wireModel || wireModel is TransitionSupportModel)
+                    return;
+
+                // If the wire has a missing port, do not allow creation of portals.
+                hasNullOrMissingPort = wireModel.ToPort is null || wireModel.FromPort is null ||
+                    wireModel.ToPort.PortType == PortType.MissingPort ||
+                    wireModel.FromPort.PortType == PortType.MissingPort;
+
+                wires.Add(wireModel);
+            }
+
+            if (wires.Count > 0)
+            {
+                var wireData = Wire.GetPortalsWireData(wires, this);
+                evt.menu.AppendMenuItemFromShortcutWithName<ShortcutConvertWireToPortalEvent>(GraphTool, L10n.Tr("Convert to Portals"), _ =>
+                {
+                    Dispatch(new ConvertWiresToPortalsCommand(wireData, this));
+                }, hasNullOrMissingPort ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
+            }
+        }
+
+        void AppendInsertNodeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (selection.Count != 1 || selection[0] is not WireModel wireModel || selection[0] is TransitionSupportModel)
+                return;
+
+            var hasNullOrMissingPort = wireModel.ToPort is null || wireModel.FromPort is null ||
+                wireModel.ToPort.PortType == PortType.MissingPort ||
+                wireModel.FromPort.PortType == PortType.MissingPort;
+
+            evt.menu.AppendAction(L10n.Tr("Insert Node"), menuAction =>
+            {
+                var mousePosition = menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition;
+                ShowItemLibrary(mousePosition);
+            }, _ => hasNullOrMissingPort ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
+        }
+
+        void AppendSelectAllPlacematContentsMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var placematModels = new List<PlacematModel>();
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not PlacematModel placematModel)
+                    continue;
+
+                placematModels.Add(placematModel);
+            }
+
+            // If there are not placemats or more than 1 placemat in the selection, don't append this menu item.
+            if (placematModels.Count is 0 or > 1)
+                return;
+
+            var placemat = placematModels[0].GetView<Placemat>(this);
+            if (placemat == null)
+                return;
+
+            evt.menu.AppendAction(L10n.Tr("Select All Placemat Contents"),
+                _ =>
+                {
+                    placemat.SelectAllInside();
+                }, placemat.HasElementsOverThisPlacemat() ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendReorderPlacematMenuItems(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var placematModels = new List<PlacematModel>();
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not PlacematModel placematModel)
+                    continue;
+
+                placematModels.Add(placematModel);
+            }
+
+            // If there are not placemats in the selection, don't append this menu item.
+            if (placematModels.Count == 0)
+                return;
+
+            var placematModelsInGraph = GraphModel.PlacematModels;
+
+            // JOCE TODO: Check that *ALL* placemats are at the top or bottom. We should be able to do something otherwise.
+            var placematIsTop = placematModelsInGraph[^ 1] == placematModels[0];
+            var placematIsBottom = placematModelsInGraph[0] == placematModels[0];
+            var canBeReordered = placematModelsInGraph.Count > 1;
+
+            evt.menu.AppendSeparator();
+            evt.menu.AppendAction(L10n.Tr("Bring to Front"),
+                _ => Dispatch(new ChangePlacematOrderCommand(ZOrderMove.ToFront, placematModels)),
+                canBeReordered && !placematIsTop ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            evt.menu.AppendAction(L10n.Tr("Bring Forward"),
+                _ => Dispatch(new ChangePlacematOrderCommand(ZOrderMove.Forward, placematModels)),
+                canBeReordered && !placematIsTop ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            evt.menu.AppendAction(L10n.Tr("Send Backward"),
+                _ => Dispatch(new ChangePlacematOrderCommand(ZOrderMove.Backward, placematModels)),
+                canBeReordered && !placematIsBottom ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            evt.menu.AppendAction(L10n.Tr("Send to Back"),
+                _ => Dispatch(new ChangePlacematOrderCommand(ZOrderMove.ToBack, placematModels)),
+                canBeReordered && !placematIsBottom ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendSmartResizeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var placemats = new List<Placemat>();
+            var hasElementsOverPlacemat = false;
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not PlacematModel placematModel)
+                    continue;
+
+                var placemat = placematModel.GetView<Placemat>(this);
+                if (placemat == null)
+                    return;
+
+                placemats.Add(placemat);
+                if (placemat.HasElementsOverThisPlacemat())
+                    hasElementsOverPlacemat = true;
+            }
+
+            // If there are not placemats or more than 1 placemat in the selection, don't append this menu item.
+            if (placemats.Count is 0 or > 1)
+                return;
+
+            evt.menu.AppendAction(L10n.Tr("Smart Resize"),
+                _ =>
+                {
+                    foreach (var placemat in placemats)
+                    {
+                        placemat.SmartResize();
+                    }
+                },
+                // If at least one selected placemat has elements over it, enable the menu item.
+                hasElementsOverPlacemat ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendDeleteAndSelectContentsMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            var placemats = new List<PlacematModel>();
+            foreach (var elementModel in selection)
+            {
+                if (elementModel is not PlacematModel placematModel)
+                    continue;
+
+                placemats.Add(placematModel);
+            }
+
+            evt.menu.AppendAction(L10n.Tr("Delete and Select Contents"), _ =>
+            {
+                Dispatch(new DeleteAndSelectPlacematContentCommand(placemats, this));
+            });
         }
 
         /// <summary>
@@ -1224,14 +1952,9 @@ namespace Unity.GraphToolkit.Editor
                 foreach (var element in graphElements)
                     elementsInPlacemat.Add(element.GraphElementModel.NeedsContainer() ? element.GetFirstAncestorOfType<GraphElement>() : element);
 
-                if (Placemat.ComputeElementBounds(ContentViewContainer, ref bounds, elementsInPlacemat))
-                {
-                    Dispatch(new CreatePlacematCommand(bounds));
-                }
-                else
-                {
-                    Dispatch(new CreatePlacematCommand(graphPosition));
-                }
+                Dispatch(Placemat.ComputeElementBounds(ContentViewContainer, ref bounds, elementsInPlacemat)
+                    ? new CreatePlacematCommand(bounds)
+                    : new CreatePlacematCommand(graphPosition));
             }
         }
 
@@ -1764,6 +2487,67 @@ namespace Unity.GraphToolkit.Editor
             PositionDependenciesManager.LogDependencies();
         }
 
+        /// <summary>
+        /// Returns the center point of nodes.
+        /// </summary>
+        /// <param name="elements">List of nodes.</param>
+        /// <returns></returns>
+        protected Vector2 GetCenterOfSelectionOfNodes(List<GraphElementModel> elements)
+        {
+            Rect selectionRect = new Rect();
+
+            elements.ForEach((element) =>
+            {
+                // Only consider nodes for the spawn position calculation.
+                if (element is AbstractNodeModel)
+                {
+                    var elementView = element.GetView<GraphElement>(this);
+
+                    selectionRect = (selectionRect == default)
+                    ? elementView.worldBound
+                    : RectUtils.Encompass(selectionRect, elementView.worldBound);
+                }
+            });
+
+            return selectionRect.center;
+        }
+
+        /// <summary>
+        /// Converts 2D world coordinates to the graph view content area coordinates.
+        /// </summary>
+        /// <param name="worldPosition"></param>
+        /// <returns></returns>
+        protected Vector2 WorldToGraphViewArea(Vector2 worldPosition)
+        {
+            // Convert the world position to the graph view content area.
+            return this.ChangeCoordinatesTo(ContentViewContainer, this.WorldToLocal(worldPosition));
+        }
+
+        /// <summary>
+        /// Returns the mouse position relative to the graph view content area.
+        /// If the mouse is outside of the EditorWindow, the center of the content area is returned.
+        /// </summary>
+        /// <param name="worldPosition">Position as received in events.</param>
+        /// <returns></returns>
+        protected Vector2 GetLocalMousePositionOrCenter(Vector2 worldPosition)
+        {
+            if (EditorWindow.mouseOverWindow != Window)
+                return WorldToGraphViewArea(new Vector2(contentRect.width / 2f, contentRect.height / 2f));
+            return WorldToGraphViewArea(worldPosition);
+        }
+
+        /// <summary>
+        /// Returns a Rect positioned at the mouse position relative to the graph view content area.
+        /// If the mouse is outside of the EditorWindow, the center of the content area is returned.
+        /// </summary>
+        /// <param name="worldPosition"></param>
+        /// <param name="elementSize"></param>
+        /// <returns></returns>
+        protected Rect GetLocalMousePositionOrCenter(Vector2 worldPosition, Vector2 elementSize)
+        {
+            return new Rect(GetLocalMousePositionOrCenter(worldPosition), elementSize);
+        }
+
         public virtual void StopSelectionDragger()
         {
             // cancellation is handled in the MoveMove callback
@@ -1804,7 +2588,7 @@ namespace Unity.GraphToolkit.Editor
         /// <param name="e">The event.</param>
         protected void OnShortcutShowItemLibraryEvent(ShortcutShowItemLibraryEvent e)
         {
-            ShowItemLibrary(e.MousePosition);
+            ShowItemLibrary((EditorWindow.mouseOverWindow != Window)? new Vector2(contentRect.width / 2f, contentRect.height / 2f) : e.MousePosition);
             e.StopPropagation();
         }
 
@@ -1866,6 +2650,29 @@ namespace Unity.GraphToolkit.Editor
             e.StopPropagation();
         }
 
+        /// <summary>
+        /// Callback for the ShortcutCreateLocalSubgraphFromSelectionEvent.
+        /// </summary>
+        /// <param name="e">The event.</param>
+        protected void OnShortcutCreateLocalSubgraphFromSelectionEvent(ShortcutCreateLocalSubgraphFromSelectionEvent e)
+        {
+            var data = SubgraphFromSelectionAction.CollectData(this, null, null);
+
+            if (!data.IsValid)
+                return;
+
+            Dispatch(new CreateLocalSubgraphFromSelectionCommand(
+                data.elementsToInclude,
+                this,
+                ContentViewContainer.WorldToLocal(GetCenterOfSelectionOfNodes(data.elementsToInclude)),
+                null,
+                null,
+                data.defaultName,
+                data.elementsToDelete));
+
+            e.StopPropagation();
+        }
+
         /* TODO OYT (GTF-804): For V1, access to the Align Items and Align Hierarchy features was removed as they are confusing to users. To be improved before making them accessible again.
         /// <summary>
         /// Callback for the ShortcutAlignNodesEvent.
@@ -1894,8 +2701,7 @@ namespace Unity.GraphToolkit.Editor
         /// <param name="e">The event.</param>
         protected void OnShortcutCreateStickyNoteEvent(ShortcutCreateStickyNoteEvent e)
         {
-            var atPosition = new Rect(this.ChangeCoordinatesTo(ContentViewContainer, this.WorldToLocal(e.MousePosition)), StickyNote.defaultSize);
-            Dispatch(new CreateStickyNoteCommand(atPosition));
+            Dispatch(new CreateStickyNoteCommand(GetLocalMousePositionOrCenter(e.MousePosition, StickyNote.defaultSize)));
             e.StopPropagation();
         }
 
@@ -1919,11 +2725,7 @@ namespace Unity.GraphToolkit.Editor
 
             if (selectedGraphElements.Count != 1 || selectedGraphElements[0].Model is not PlacematModel)
             {
-                Vector2 mousePosition = e.MousePosition;
-                Vector2 graphPosition = ContentViewContainer.WorldToLocal(mousePosition);
-
-                CreatePlacematFromGraphElements(selectedGraphElements, graphPosition);
-
+                CreatePlacematFromGraphElements(selectedGraphElements, GetLocalMousePositionOrCenter(e.MousePosition));
                 e.StopPropagation();
             }
         }
@@ -1980,6 +2782,7 @@ namespace Unity.GraphToolkit.Editor
             e.StopPropagation();
         }
 
+        /// <summary>
         /// Callback for the ShortcutToggleNodeCollapseEvent.
         /// </summary>
         /// <param name="e">The event.</param>
@@ -3792,22 +4595,6 @@ namespace Unity.GraphToolkit.Editor
             UpdateGraphElementsInView();
         }
 
-        static void AddFindAssociateFileMenuItem(ContextualMenuPopulateEvent evt, GraphObject associateFileObject)
-        {
-            // Only add the menu item if the asset can be found in the Project Window and is a main asset.
-            if (associateFileObject is null ||
-                !AssetDatabase.IsMainAsset(associateFileObject) ||
-                !AssetDatabaseHelper.TryGetGUIDAndLocalFileIdentifier(associateFileObject, out _, out _))
-                return;
-
-            evt.menu.AppendAction("Find Associated File", _ =>
-            {
-                EditorUtility.FocusProjectWindow();
-                Selection.activeObject = associateFileObject;
-                EditorGUIUtility.PingObject(associateFileObject);
-            });
-        }
-
         /// <inheritdoc />
         public override void HandleGlobalValidateCommand(ValidateCommandEvent evt)
         {
@@ -3820,168 +4607,45 @@ namespace Unity.GraphToolkit.Editor
             ViewSelection.OnExecuteCommand(evt);
         }
 
-        /// <summary>
-        /// Adds the appropriate item to create a subgraph from the selection.
-        /// </summary>
-        /// <param name="evt">The <see cref="ContextualMenuPopulateEvent"/> event.</param>
-        /// <param name="selection">The selected graph elements.</param>
-        /// <param name="template">The template of the graph.</param>
-        /// <param name="isAssetSubgraph">Whether the created subgraph should be an Asset subgraph. Otherwise, it will be a Local subgraph.</param>
-        /// <param name="defaultName">Default name of the new local subgraph, won't be used if the selection contains an encompassing placemat that can provide the name instead.</param>
-        /// <remarks>The Convert to Subgraph item should only be added if there is ONE selected placemat and all other selected elements are inside that placemat. Else, the item to add should be "Create Subgraph".</remarks>
-        protected void AddConvertToSubgraphMenuItem<TAsset, TGraphModel>(ContextualMenuPopulateEvent evt, IReadOnlyList<GraphElementModel> selection, GraphTemplate template, bool isAssetSubgraph = false, string defaultName = null)
-            where TGraphModel : GraphModel
+        public virtual IReadOnlyList<ContextualMenuItem> ContextualMenuItems => k_ContextualMenuItems;
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            ContextualMenuHelpers.addNodeItem,
+            ContextualMenuHelpers.createPlacematItem,
+            ContextualMenuHelpers.createStickyNoteItem,
+            ContextualMenuHelpers.createEmptyLocalSubgraphItem,
+            ContextualMenuHelpers.pasteItem,
+            ContextualMenuHelpers.selectAllItem,
+            ContextualMenuHelpers.showOverlayMenuItem,
+        };
+
+        internal class TestAccess
         {
-            if (!GraphModel.AllowSubgraphCreation)
-                return;
-
-            AddConvertToSubgraphMenuItem(typeof(TAsset), typeof(TGraphModel), evt, selection, template, isAssetSubgraph, defaultName);
-        }
-
-        /// <summary>
-        /// Adds the appropriate item to create a subgraph from the selection.
-        /// </summary>
-        /// <param name="graphObjectType">The type of <see cref="GraphObject"/> for the new subgraph.</param>
-        /// <param name="graphModelType">The type of <see cref="GraphModel"/> for the new subgraph.</param>
-        /// <param name="evt">The <see cref="ContextualMenuPopulateEvent"/> event.</param>
-        /// <param name="selection">The selected graph elements.</param>
-        /// <param name="template">The template of the graph.</param>
-        /// <param name="isAssetSubgraph">Whether the created subgraph should be an Asset subgraph. Otherwise, it will be a Local subgraph.</param>
-        /// <param name="defaultName">Default name of the new local subgraph, won't be used if the selection contains an encompassing placemat that can provide the name instead.</param>
-        /// <remarks>The Convert to Subgraph item should only be added if there is ONE selected placemat and all other selected elements are inside that placemat. Else, the item to add should be "Create Subgraph".</remarks>
-        internal void AddConvertToSubgraphMenuItem(Type graphObjectType, Type graphModelType, ContextualMenuPopulateEvent evt, IReadOnlyList<GraphElementModel> selection, GraphTemplate template, bool isAssetSubgraph = false, string defaultName = null)
-        {
-            if (!GraphModel.AllowSubgraphCreation)
-                return;
-
-            if (!selection.Any(e => e is IPlaceholder || e is IHasDeclarationModel hasDeclarationModel && hasDeclarationModel.DeclarationModel is IPlaceholder) && selection.Any(e => e is AbstractNodeModel || e is PlacematModel || e is StickyNoteModel))
+            readonly GraphView m_GraphView;
+            public TestAccess(GraphView graphView)
             {
-                var transferredModels = new HashSet<GraphElementModel>();
-                List<SubgraphNodeModel> assetSubgraphNodes = null;
-                List<SubgraphNodeModel> localSubgraphNodes = null;
-
-                var placematCount = 0;
-                PlacematModel encompassingPlacemat = null;
-                var encompassingPlacematRect = Rect.zero;
-                var isInEncompassingPlacemat = true;
-
-                foreach (var model in selection)
-                {
-                    if (model is SubgraphNodeModel subgraphNode && graphModelType.IsInstanceOfType(subgraphNode.GetSubgraphModel()))
-                    {
-                        if (subgraphNode.GetSubgraphModel()?.GraphObject == null || !subgraphNode.IsReferencingLocalSubgraph)
-                        {
-                            assetSubgraphNodes ??= new List<SubgraphNodeModel>();
-                            assetSubgraphNodes.Add(subgraphNode);
-                        }
-                        else
-                        {
-                            localSubgraphNodes ??= new List<SubgraphNodeModel>();
-                            localSubgraphNodes.Add(subgraphNode);
-                        }
-                    }
-
-                    if (model is not PlacematModel placematModel)
-                        continue;
-
-                    var placemat = placematModel.GetView<Placemat>(this);
-                    if (placemat is null)
-                        continue;
-
-                    placemat.ActOnGraphElementsInside(ge =>
-                    {
-                        transferredModels.Add(ge.GraphElementModel);
-                        return false;
-                    });
-
-                    placematCount++;
-
-                    if (placematCount == 1)
-                    {
-                        encompassingPlacemat = placematModel;
-                        encompassingPlacematRect = placemat.layout;
-                    }
-                    else if (isInEncompassingPlacemat && placematCount > 1)
-                    {
-                        // Verify that in case of multiple selected placemats, they are contained inside the encompassing placemat.
-                        var placematIsInEncompassingRect = encompassingPlacematRect.Contains(placemat.layout.min) && encompassingPlacematRect.Contains(placemat.layout.max);
-                        var encompassingRectIsInPlacemat = placemat.layout.Contains(encompassingPlacematRect.min) && placemat.layout.Contains(encompassingPlacematRect.max);
-
-                        if (encompassingRectIsInPlacemat)
-                        {
-                            // The placemat contains the current encompassing placemat, it becomes the new encompassing placemat.
-                            encompassingPlacemat = placematModel;
-                            encompassingPlacematRect = placemat.layout;
-                        }
-
-                        if (!encompassingRectIsInPlacemat && !placematIsInEncompassingRect)
-                            isInEncompassingPlacemat = false;
-                    }
-                }
-
-                // The Convert to Subgraph option should only be displayed if there is ONE selected placemat OR if there are multiple selected placemats, they must be contained inside the encompassing placemat.
-                // and all other selected elements are inside the encompassing placemat.
-                var shouldConvertToPlacemat = placematCount == 1 || isInEncompassingPlacemat;
-                foreach (var model in selection)
-                {
-                    if (!transferredModels.Add(model))
-                        continue;
-
-                    if (shouldConvertToPlacemat && model is PlacematModel)
-                        continue;
-
-                    // A selected model isn't in the placemat(s).
-                    shouldConvertToPlacemat = false;
-                }
-
-                // The Convert to Subgraph option should not include the placemat in the newly created subgraph.
-                if (shouldConvertToPlacemat)
-                    transferredModels.Remove(encompassingPlacemat);
-
-                if (localSubgraphNodes is not null)
-                {
-                    var actionName = "Convert to Asset";
-                    if (localSubgraphNodes.Count > 1)
-                        actionName += $"s ({localSubgraphNodes.Count.ToString()})";
-                    evt.menu.AppendAction(actionName,
-                        _ => Dispatch(new ConvertLocalToAssetSubgraphCommand(localSubgraphNodes, template)));
-                }
-                if (assetSubgraphNodes is not null)
-                {
-                    var actionName = defaultName == null ? "Unpack to Local Subgraph" : $"Unpack to {defaultName}";
-                    if (assetSubgraphNodes.Count > 1)
-                        actionName += $"s ({assetSubgraphNodes.Count.ToString()})";
-                    evt.menu.AppendAction(actionName,
-                        _ => Dispatch(new ConvertAssetToLocalSubgraphCommand(assetSubgraphNodes, template)));
-                }
-                evt.menu.AppendSeparator();
-
-                evt.menu.AppendAction(shouldConvertToPlacemat ? $"Convert to {template.GraphTypeName}" : $"Create {template.GraphTypeName} from Selection", menuAction =>
-                {
-                    if (isAssetSubgraph)
-                    {
-                        Dispatch(new CreateSubgraphCommand(
-                            graphObjectType,
-                            transferredModels.ToList(),
-                            template,
-                            this,
-                            ContentViewContainer.WorldToLocal(menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition),
-                            shouldConvertToPlacemat ? new List<GraphElementModel> { encompassingPlacemat } : null));
-                    }
-                    else
-                    {
-                        Dispatch(new CreateLocalSubgraphFromSelectionCommand(
-                            transferredModels.ToList(),
-                            this,
-                            ContentViewContainer.WorldToLocal(menuAction?.eventInfo?.mousePosition ?? Event.current.mousePosition),
-                            graphObjectType,
-                            template,
-                            shouldConvertToPlacemat ? encompassingPlacemat?.Title : defaultName,
-                            elementsToDelete: shouldConvertToPlacemat ? new List<GraphElementModel> { encompassingPlacemat } : null));
-                    }
-                }, selection.Count == 0 ? DropdownMenuAction.Status.Disabled : DropdownMenuAction.Status.Normal);
-                evt.menu.AppendSeparator();
+                m_GraphView = graphView;
             }
+
+            public void AppendInsertBlockItemMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection, bool insertAbove, string itemName = "") => m_GraphView.AppendInsertBlockItemMenuItem(evt, selection, insertAbove, itemName);
+            public void AppendFontSizeAndThemeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendFontSizeAndThemeMenuItem(evt, selection);
+            public void AppendCreatePlacematMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendCreatePlacematMenuItem(evt, selection);
+            public void AppendColorMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendColorMenuItem(evt, selection);
+            public void AppendAlignAndDistributeElementsMenuItems(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendAlignAndDistributeElementsMenuItems(evt, selection);
+            public void AppendCreateEmptyLocalSubgraph(ContextualMenuPopulateEvent evt) => m_GraphView.AppendCreateEmptyLocalSubgraph(evt);
+            public void AppendToggleCollapseMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendToggleCollapseMenuItem(evt, selection);
+            public void AppendDisableNodeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendDisableNodeMenuItem(evt, selection);
+            public void AppendSetAsDefaultStateMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendSetAsDefaultStateMenuItem(evt, selection);
+            public void AppendCreateTransitionMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection, TransitionSupportKind transitionKind) => m_GraphView.AppendCreateTransitionMenuItem(evt, selection, transitionKind);
+            public void AppendCreateLocalSubgraphFromSelectionMenuItem(ContextualMenuPopulateEvent evt) => m_GraphView.AppendCreateLocalSubgraphFromSelectionMenuItem(evt);
+            public void AppendExtractContentsToPlacematMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendExtractContentsToPlacematMenuItem(evt, selection);
+            public void AppendOpenSubgraphMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendOpenSubgraphMenuItem(evt, selection);
+            public void AppendConvertToAssetSubgraphMenuItem(ContextualMenuPopulateEvent evt) => m_GraphView.AppendConvertToAssetSubgraphMenuItem(evt);
+            public void AppendUnpackToLocalSubgraphMenuItem(ContextualMenuPopulateEvent evt) => m_GraphView.AppendUnpackToLocalSubgraphMenuItem(evt);
+            public void AppendFindAssetInProjectMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendFindAssetInProjectMenuItem(evt, selection);
+            public void AppendConvertToConstantMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendConvertToConstantMenuItem(evt, selection);
+            public void AppendConvertToPortalsMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendConvertToPortalsMenuItem(evt, selection);
+            public void AppendInsertNodeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendInsertNodeMenuItem(evt, selection);
         }
     }
 }

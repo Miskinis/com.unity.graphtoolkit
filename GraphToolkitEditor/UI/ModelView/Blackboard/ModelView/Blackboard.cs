@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -11,7 +13,7 @@ namespace Unity.GraphToolkit.Editor
     /// A GraphElement to display a <see cref="BlackboardContentModel"/>.
     /// </summary>
     [UnityRestricted]
-    internal class Blackboard : BlackboardElement
+    internal class Blackboard : BlackboardElement, IHasContextualMenuItems
     {
         /// <summary>
         /// The USS class name added to this element.
@@ -236,7 +238,7 @@ namespace Unity.GraphToolkit.Editor
             treeView.bindItem = BindTreeViewCell;
             treeView.unbindItem = UnbindTreeViewCell;
 
-            m_TreeView.RegisterCallback<ContextualMenuPopulateEvent>(BuildContextualMenu);
+            RegisterCallback<ContextualMenuPopulateEvent>(BuildContextualMenu);
         }
 
         /// <summary>
@@ -509,7 +511,69 @@ namespace Unity.GraphToolkit.Editor
         /// </remarks>
         protected new void BuildContextualMenu(ContextualMenuPopulateEvent evt)
         {
-            base.BuildContextualMenu(evt);
+            // If the menu already has items, append a separator.
+            if (evt.menu.MenuItems().Count > 0)
+                evt.menu.AppendSeparator();
+
+            // Get the categorized menu items.
+            Dictionary<ContextualMenuCategory, List<ContextualMenuItem>> categorizedMenuItems = null;
+            if (evt.target is Blackboard)
+            {
+                // If the user right-clicked on the blackboard itself (even if a variable is selected), use its menu items.
+                categorizedMenuItems = ContextualMenuHelpers.CategorizeMenuItems(ContextualMenuItems);
+            }
+            else
+            {
+                var selection = BlackboardView.GetSelection();
+                foreach (var elementModel in selection)
+                {
+                    if (elementModel is VariableDeclarationModelBase vdm)
+                    {
+                        categorizedMenuItems = ContextualMenuHelpers.CategorizeMenuItems(vdm.ContextualMenuItems);
+                        break;
+                    }
+                }
+            }
+
+            categorizedMenuItems ??= ContextualMenuHelpers.CategorizeMenuItems(ContextualMenuItems);
+
+            // If there are no categorized menu items, we can return early.
+            if (categorizedMenuItems == null)
+                return;
+
+            var menuActionMap = new Dictionary<string, Action>();
+            PopulateMenuActionMap(menuActionMap, evt);
+            ViewSelection.BuildContextualMenu(categorizedMenuItems, evt, menuActionMap);
+        }
+
+        void PopulateMenuActionMap(Dictionary<string, Action> menuActionMap, ContextualMenuPopulateEvent evt)
+        {
+            if (menuActionMap == null)
+                return;
+
+            BlackboardView.ViewSelection.PopulateMenuActionMap(menuActionMap, evt);
+            menuActionMap.Add(ContextualMenuHelpers.createVariableItem.Name, () => AppendCreateVariableMenuItem(evt));
+            menuActionMap.Add(ContextualMenuHelpers.createGroupItem.Name, () => AppendCreateGroupMenuItem(evt));
+
+            // TODO (GTF-2241): Uncomment the following when the "Unused" feature is fixed.
+            // menuActionMap.Add(ContextualMenuHelpers.selectUnusedItem.Name, () => AppendSelectUnusedMenuItem(evt));
+        }
+
+        void AppendCreateVariableMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            var blackboardContentModel = (BlackboardContentModel)Model;
+            if (!blackboardContentModel.HasDefaultButton())
+                return;
+
+            evt.menu.AppendAction(L10n.Tr("Create Variable"), _ =>
+            {
+                CreateVariable();
+            });
+        }
+
+        void AppendCreateGroupMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            IGroupItemModel groupModel = null;
 
             s_VirtualizationControllerProperty ??= typeof(TreeView).GetProperty("virtualizationController", BindingFlags.NonPublic | BindingFlags.Instance);
             if (s_VirtualizationControllerProperty != null)
@@ -521,20 +585,26 @@ namespace Unity.GraphToolkit.Editor
                     var model = m_TreeView.GetItemDataForIndex<IGroupItemModel>(index);
                     if (model != null && model.ParentGroup is GroupModel && !BlackboardView.GetSelection().OfType<IGroupItemModel>().Any(t => t.GetSection() != model.GetSection() || t.ParentGroup is not GroupModel))
                     {
-                        evt.menu.AppendAction("Create Group From Selection", _ =>
-                        {
-                            BlackboardView.CreateGroupFromSelection(model);
-                        });
+                        groupModel = model;
                     }
                 }
             }
 
-            BlackboardView.ViewSelection.BuildContextualMenu(evt);
+            evt.menu.AppendAction(L10n.Tr("Create Group"), _ =>
+            {
+                if (groupModel == null)
+                    CreateGroup(null);
+                else
+                    BlackboardView.CreateGroupFromSelection(groupModel);
+            });
+        }
 
-            evt.menu.AppendAction("Select Unused", _ =>
+        void AppendSelectUnusedMenuItem(ContextualMenuPopulateEvent evt)
+        {
+            evt.menu.AppendAction(L10n.Tr("Select Unused"), _ =>
             {
                 BlackboardView.DispatchSelectUnusedVariables();
-            }, _ => DropdownMenuAction.Status.Normal);
+            });
         }
 
         /// <summary>
@@ -611,10 +681,7 @@ namespace Unity.GraphToolkit.Editor
             var graphModel = (Model as BlackboardContentModel)?.GraphModel;
             if (graphModel == null)
                 return;
-            BlackboardView.Dispatch(new BlackboardGroupCreateCommand
-                (
-                    parentGroup ?? graphModel.GetSectionModel(GraphModel.DefaultSectionName)
-                )
+            BlackboardView.Dispatch(new BlackboardGroupCreateCommand(parentGroup ?? graphModel.GetSectionModel(GraphModel.DefaultSectionName))
             );
         }
 
@@ -771,5 +838,16 @@ namespace Unity.GraphToolkit.Editor
             if (changed)
                 Refresh(false);
         }
+
+        /// <inheritdoc />
+        public IReadOnlyList<ContextualMenuItem> ContextualMenuItems => k_ContextualMenuItems;
+
+        static readonly List<ContextualMenuItem> k_ContextualMenuItems = new() {
+            ContextualMenuHelpers.createVariableItem,
+            ContextualMenuHelpers.createGroupItem,
+            ContextualMenuHelpers.pasteItem,
+            ContextualMenuHelpers.selectAllItem,
+            ContextualMenuHelpers.selectUnusedItem,
+        };
     }
 }

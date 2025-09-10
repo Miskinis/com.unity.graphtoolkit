@@ -67,18 +67,21 @@ namespace Unity.GraphToolkit.Editor
             }
         }
 
-        static void FilterOutOpenedAssets(string[] inPaths, IReadOnlyList<GraphReference> openedGraphs, List<string> outPaths, string[] correspondingPaths = null, List<string> outCorrespondingPaths = null)
+        static void FilterOutOpenedAssets(string[] inPaths, GraphReference openedGraph, IReadOnlyList<GraphReference> openedSubGraphs, List<string> outPaths, string[] correspondingPaths = null, List<string> outCorrespondingPaths = null)
         {
             for (var index = 0; index < inPaths.Length; index++)
             {
                 var path = inPaths[index];
-                var isOpened = false;
-                foreach (var openedGraph in openedGraphs)
+                bool isOpened = openedGraph.RefersToFile(AssetDatabase.GUIDFromAssetPath(path));
+                if (!isOpened)
                 {
-                    if (openedGraph.RefersToFile(AssetDatabase.GUIDFromAssetPath(path)))
+                    foreach (var openedSubGraph in openedSubGraphs)
                     {
-                        isOpened = true;
-                        break;
+                        if (openedSubGraph.RefersToFile(AssetDatabase.GUIDFromAssetPath(path)))
+                        {
+                            isOpened = true;
+                            break;
+                        }
                     }
                 }
 
@@ -106,22 +109,28 @@ namespace Unity.GraphToolkit.Editor
 #endif
             foreach (var window in windows)
             {
+                var openedGraph = window.GraphTool.ToolState.CurrentGraph;
+                if( openedGraph == default )
+                    continue;
                 var openedGraphs = window.GraphTool.ToolState.SubgraphStack;
 
                 var importedAssetList = new List<string>(importedAssets.Length);
-                FilterOutOpenedAssets(importedAssets, openedGraphs, importedAssetList);
+                FilterOutOpenedAssets(importedAssets, openedGraph, openedGraphs, importedAssetList);
 
                 var movedAssetList = new List<string>(movedAssets.Length);
                 var movedFromAssetPathList = new List<string>(movedFromAssetPaths.Length);
-                FilterOutOpenedAssets(movedAssets, openedGraphs, movedAssetList, movedFromAssetPaths, movedFromAssetPathList);
+                FilterOutOpenedAssets(movedAssets,  openedGraph, openedGraphs, movedAssetList, movedFromAssetPaths, movedFromAssetPathList);
 
                 var deletedAssetList = new List<string>(deletedAssets.Length);
-                FilterOutOpenedAssets(deletedAssets, openedGraphs, deletedAssetList);
+                FilterOutOpenedAssets(deletedAssets,  openedGraph, openedGraphs, deletedAssetList);
 
-                using var updater = window.GraphTool.ExternalAssetsState.UpdateScope;
-                updater.AddImportedAssets(importedAssetList);
-                updater.AddMovedAssets(movedAssetList, movedFromAssetPathList);
-                updater.AddDeletedAssets(deletedAssetList);
+                if (importedAssetList.Count != 0 || movedAssetList.Count != 0 || deletedAssetList.Count != 0)
+                {
+                    using var updater = window.GraphTool.ExternalAssetsState.UpdateScope;
+                    updater.AddImportedAssets(importedAssetList);
+                    updater.AddMovedAssets(movedAssetList, movedFromAssetPathList);
+                    updater.AddDeletedAssets(deletedAssetList);
+                }
             }
         }
 

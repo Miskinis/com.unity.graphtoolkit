@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.GraphToolkit.Editor.ContextualMenuItems;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -402,5 +403,29 @@ namespace Unity.GraphToolkit.Editor
 
             m_CopyPasteLocalSubgraphModelReference = null;
         }
+
+        /// <inheritdoc />
+        public override IReadOnlyList<ContextualMenuItem> ContextualMenuItems
+        {
+            get
+            {
+                var menuItems = new List<ContextualMenuItem>(base.ContextualMenuItems);
+                menuItems.AddRange(IsReferencingLocalSubgraph ? s_LocalSubgraphContextualMenuItems : s_AssetSubgraphContextualMenuItems);
+                return menuItems;
+            }
+        }
+
+        static List<ContextualMenuItem> s_LocalSubgraphContextualMenuItems = new() {
+            ContextualMenuHelpers.extractContentsToPlacematItem,
+            ContextualMenuHelpers.openLocalSubgraphItem,
+            ContextualMenuHelpers.convertToAssetSubgraphItem,
+        };
+
+        static List<ContextualMenuItem> s_AssetSubgraphContextualMenuItems = new() {
+            ContextualMenuHelpers.extractContentsToPlacematItem,
+            ContextualMenuHelpers.openAssetSubgraphItem,
+            ContextualMenuHelpers.unpackToLocalSubgraphItem,
+            ContextualMenuHelpers.findAssetInProjectItem,
+        };
     }
 }

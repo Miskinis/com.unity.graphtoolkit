@@ -98,7 +98,7 @@ namespace Unity.GraphToolkit.Editor
             GroupModel newGroup = graphModelState.GraphModel.CreateGroup(title, command.GroupItemModels);
 
             int index = command.ContainingGroup.Items.IndexOf(command.InsertAfter);
-            command.ContainingGroup.InsertItem(newGroup, index < 0 ? (command.InsertAfter == null ? 0 : int.MaxValue) : index + 1);
+            command.ContainingGroup.InsertItem(newGroup, index < 0 ? int.MaxValue : index + 1);
 
             graphModelState.GraphModel.UpdateSubGraphs();
 

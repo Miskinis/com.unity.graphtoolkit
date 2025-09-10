@@ -273,7 +273,13 @@ namespace Unity.GraphToolkit.Editor
         /// <summary>
         /// Whether it is allowed to create sub-graphs.
         /// </summary>
-        public virtual bool AllowSubgraphCreation => true;
+        public virtual bool AllowSubgraphCreation => !IsStateMachineGraph; // State machine graphs do not allow subgraphs.
+
+        /// <summary>
+        /// Whether the graph is a state machine graph.
+        /// </summary>
+        // TODO: Right now, only used to add the correct items in the context menu of the graph view. Could be used for other use cases.
+        public virtual bool IsStateMachineGraph => false;
 
         /// <summary>
         /// Whether the node bypass feature is enabled or not.
@@ -4664,6 +4670,11 @@ namespace Unity.GraphToolkit.Editor
         {
             return GetType().Name == otherGraph.GetType().Name;
         }
+
+        /// <summary>
+        /// The list of subgraph templates that this graph supports.
+        /// </summary>
+        public virtual List<GraphTemplate> SubgraphTemplates { get; }
 
         /// <summary>
         /// Creates a subgraph node from a selection of graph elements.

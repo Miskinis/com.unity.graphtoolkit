@@ -135,8 +135,11 @@ namespace Unity.GraphToolkit.Editor
             PopulateMenu(menu);
 
             FixMenu(menu);
-
+#if UNITY_6000_3_OR_NEWER
+            menu.DropDown(worldBound, this, DropdownMenuSizeMode.Fixed);
+#else
             menu.DropDown(worldBound, this, true);
+#endif
         }
 
         void PopulateMenu(GenericDropdownMenu menu)

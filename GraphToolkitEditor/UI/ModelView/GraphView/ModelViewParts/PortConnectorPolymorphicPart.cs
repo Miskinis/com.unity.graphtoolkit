@@ -100,7 +100,12 @@ namespace Unity.GraphToolkit.Editor
                 }
 
                 FixMenu(rootMenu, types.Count);
-                rootMenu.DropDown(new Rect(new Vector2(evt.position.x, evt.position.y), Vector2.right * 200), evt.target as VisualElement, true);
+                rootMenu.DropDown(new Rect(new Vector2(evt.position.x, evt.position.y), Vector2.right * 200), evt.target as VisualElement
+#if UNITY_6000_3_OR_NEWER
+                    , DropdownMenuSizeMode.Fixed);
+#else
+                    , true);   
+#endif
             }
         }
 
