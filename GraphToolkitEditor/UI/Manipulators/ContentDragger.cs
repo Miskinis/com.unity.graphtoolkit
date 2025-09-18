@@ -71,12 +71,13 @@ namespace Unity.GraphToolkit.Editor
             if (graphView == null)
                 return;
 
-            m_Start = graphView.ChangeCoordinatesTo(graphView.ContentViewContainer, e.localPosition);
-
             m_Active = true;
             m_DidDrag = false;
-            target.CapturePointer(e.pointerId);
             m_MouseButton = e.button;
+
+            graphView.RegisterCallback<ContextualMenuPopulateEvent>( OnContextualMenuPopulate, TrickleDown.TrickleDown);
+
+            m_Start = graphView.ChangeCoordinatesTo(graphView.ContentViewContainer, e.localPosition);
 
             EditorGUIUtilityBridge.SetCursor(MouseCursor.Pan);
             target.RegisterCallback<PointerMoveEvent>(OnMouseMove);
@@ -92,6 +93,14 @@ namespace Unity.GraphToolkit.Editor
             var graphView = target as GraphView;
             if (graphView == null)
                 return;
+
+            if ((e.pressedButtons & (1 << m_MouseButton)) == 0)
+            {
+                StopManipulation();
+            }
+
+            if (!target.HasPointerCapture(e.pointerId))
+                target.CapturePointer(e.pointerId);
 
             var diff = graphView.ChangeCoordinatesTo(graphView.ContentViewContainer, e.localPosition) - m_Start;
 
@@ -133,21 +142,33 @@ namespace Unity.GraphToolkit.Editor
             StopManipulation();
         }
 
-        void StopManipulation()
+        void OnContextualMenuPopulate(ContextualMenuPopulateEvent evt)
+        {
+            if (!m_Active)
+                return;
+            StopManipulation();
+        }
+
+        internal void StopManipulation()
         {
             var graphView = target as GraphView;
             if (graphView == null)
                 return;
 
+            graphView.UnregisterCallback<ContextualMenuPopulateEvent>( OnContextualMenuPopulate, TrickleDown.TrickleDown);
+
             var position = graphView.ContentViewContainer.resolvedStyle.translate;
             var scale = graphView.ContentViewContainer.resolvedStyle.scale.value;
             graphView.Dispatch(new ReframeGraphViewCommand(position, scale));
 
-            m_Active = false;
-            target.ReleaseMouse();
+            if (m_Active)
+            {
+                m_Active = false;
+                target.ReleaseMouse();
 
-            EditorGUIUtilityBridge.SetCursor(MouseCursor.Arrow);
-            target.UnregisterCallback<PointerMoveEvent>(OnMouseMove);
+                EditorGUIUtilityBridge.SetCursor(MouseCursor.Arrow);
+                target.UnregisterCallback<PointerMoveEvent>(OnMouseMove);
+            }
         }
     }
 }

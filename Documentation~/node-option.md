@@ -10,10 +10,8 @@ To create a node with a configurable number of ports:
 
 1. Define a constant name for your port count option.
 1. Override `OnDefineOptions` to create the option with a default value.
-1. Apply the `DelayedAttribute` to defer processing until input is complete.
+1. Call `Delayed()` to defer processing until the input is complete.
 
-> [!NOTE]
-> Right now Graph Toolkit only supports the `DelayedAttribute` on node option but the support for more attributes (e.g `MultilineAttribute`) is coming.
 
 [!code-csharp[](../Samples/DocCodeSamples/Editor/NodeExamples.cs#PortCountOption)]
 
@@ -36,7 +34,7 @@ To create a node with switchable port data types:
 1. Use the selected enum value to determine port data types.
 
 > [!NOTE]
-> This time there's no `DelayedAttribute` as the port needs to change as soon as port type option changes.
+> This time there's no need to call `Delayed()` as the port needs to change as soon as the port type option changes.
 
 [!code-csharp[](../Samples/DocCodeSamples/Editor/NodeExamples.cs#PortTypeOption)]
 

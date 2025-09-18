@@ -175,13 +175,27 @@ namespace Unity.GraphToolkit.Editor
             {
                 if (dataType == TypeHandle.Unknown || dataType == TypeHandle.ExecutionFlow || dataType == TypeHandle.MissingType || dataType == TypeHandle.MissingPort)
                     throw new ArgumentException("Invalid type for node option");
-                // A node option consists in a no connector port with extra info.
-                var noConnectorPort = AddNoConnectorInputPort(optionName, dataType, PortType.Default, optionId, PortOrientation.Horizontal, PortModelOptions.IsNodeOption, attributes, initializationCallback, setterAction);
+
+                optionId ??= optionName;
+
+                var portId = $"{NodeOption.k_OptionIdPrefix}{optionId}";
+
+                // Now constants for NodeOptions have NodeOption.k_OptionIdPrefix in their id. We need to migrate constants with no prefix to the new id.
+                if (!m_NodeModel.m_NodeOptionConstantsMigrated && !m_NodeModel.m_InputConstantsById.ContainsKey(portId))
+                {
+                    if (m_NodeModel.m_InputConstantsById.Remove(optionId, out var oldConstant))
+                    {
+                        m_NodeModel.m_InputConstantsById.Add(portId, oldConstant);
+                    }
+                }
+
+                // A node option consists in a no connector port with extra info. We add a prefix to avoid id conflicts with regular ports.
+                var noConnectorPort = AddNoConnectorInputPort(optionName, dataType, PortType.Default, portId, PortOrientation.Horizontal, PortModelOptions.IsNodeOption, attributes, initializationCallback, setterAction);
 
                 if (!string.IsNullOrEmpty(tooltip))
                     noConnectorPort.ToolTip = tooltip;
 
-                var nodeOption = new NodeOption(noConnectorPort, showInInspectorOnly, order);
+                var nodeOption = new NodeOption(optionId, noConnectorPort, showInInspectorOnly, order);
                 m_NodeModel.AddNodeOption(nodeOption);
                 return nodeOption;
             }
@@ -366,6 +380,10 @@ namespace Unity.GraphToolkit.Editor
 
         SubPortDefinition m_SubPortDefinition;
 
+        // indicates whether we have migrated node option constants to have the correct id (with the NodeOption.k_OptionIdPrefix prefix).
+        [NonSerialized]
+        bool m_NodeOptionConstantsMigrated;
+
         /// <inheritdoc />
         public override string IconTypeString
         {
@@ -547,6 +565,8 @@ namespace Unity.GraphToolkit.Editor
 
             var nodeDefinitionScope = CreateNodeDefinitionScope();
             OnDefineNode(nodeDefinitionScope);
+
+            m_NodeOptionConstantsMigrated = true;
 
             // Keep the same constant values if possible
             CopyInputConstantValues(oldInputConstants);
@@ -989,6 +1009,10 @@ namespace Unity.GraphToolkit.Editor
             string portId = null, PortOrientation orientation = PortOrientation.Horizontal,
             PortModelOptions options = PortModelOptions.Default, Attribute[] attributes = null, Action<Constant> initializationCallback = null, Action<object> setterAction = null)
         {
+            if (!options.HasFlag(PortModelOptions.IsNodeOption) && (portId ?? portName)?.StartsWith(NodeOption.k_OptionIdPrefix) == true)
+            {
+                throw new ArgumentException($"Input port {portName ?? portId} cannot have an id that starts with the reserved prefix {NodeOption.k_OptionIdPrefix} unless it is a node option.");
+            }
             var portModel = ReuseOrCreatePortModel(PortDirection.Input, orientation, portName, portType ?? PortType.Default, dataType, portId, options, attributes, m_InputPortInfos.previousPorts, m_InputPortInfos.portsById, null);
             UpdateConstantForInput(portModel, initializationCallback, setterAction);
             return portModel;

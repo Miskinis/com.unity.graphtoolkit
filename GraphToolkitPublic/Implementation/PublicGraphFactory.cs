@@ -271,16 +271,25 @@ namespace Unity.GraphToolkit.Editor.Implementation
                     return;
                 foreach (var cType in blockNodeAttribute.contextTypes)
                 {
-                    if (!nodeTypes.Contains(cType)) // If the context type does not support the graph type, we don't add the block type to the list.
-                        continue;
+                    AddBlockTypeToContextType(nodeTypes, cType, blockType);
 
-                    if( ! graphInfos.blockTypes.TryGetValue(cType, out var blockList))
-                    {
-                        blockList = new List<Type>();
-                        graphInfos.blockTypes[cType] = blockList;
-                    }
-                    blockList.Add(blockType);
+                    // Also add any context type that is derived from the specified context type
+                    foreach(var subContextType in TypeCache.GetTypesDerivedFrom(cType))
+                        AddBlockTypeToContextType(nodeTypes, subContextType, blockType);
                 }
+            }
+
+            void AddBlockTypeToContextType(HashSet<Type> nodeTypes, Type contextType, Type blockType)
+            {
+                if (!nodeTypes.Contains(contextType)) // If the context type does not support the graph type, we don't add the block type to the list.
+                    return;
+
+                if( ! graphInfos.blockTypes.TryGetValue(contextType, out var blockList))
+                {
+                    blockList = new List<Type>();
+                    graphInfos.blockTypes[contextType] = blockList;
+                }
+                blockList.Add(blockType);
             }
         }
 

@@ -942,9 +942,29 @@ namespace Unity.GraphToolkit.Editor
                 }
             }
 
+            var clickedOnEmptySpace = evt.target is GraphView;
+            if (clickedOnEmptySpace && selection.Count > 0)
+            {
+                // Check if the user clicked on any of the selected elements.
+                foreach (var elementModel in selection)
+                {
+                    var elementView = elementModel.GetView(this);
+                    if (elementView == null)
+                        continue;
+
+                    if (elementView.ContainsPoint(elementView.WorldToLocal(evt.mousePosition)))
+                    {
+                        clickedOnEmptySpace = false;
+                        break;
+                    }
+                }
+            }
+
             // If there are no selected elements OR the user right-clicked on an empty space, show the menu for the graph view.
-            if (selection.Count == 0 || evt.target is GraphView)
+            if (selection.Count == 0 || clickedOnEmptySpace)
+            {
                 return ContextualMenuHelpers.CategorizeMenuItems(ContextualMenuItems);
+            }
 
             // All selected elements are wires: show wire-specific menu items.
             if (allWires && selection[0] is WireModel wireModel)
@@ -1074,6 +1094,79 @@ namespace Unity.GraphToolkit.Editor
             menuActionMap.Add(ContextualMenuHelpers.smartResizeItem.Name, () => AppendSmartResizeMenuItem(evt, selection));
             menuActionMap.Add(ContextualMenuHelpers.reorderPlacematItem.Name, () => AppendReorderPlacematMenuItems(evt, selection));
             menuActionMap.Add(ContextualMenuHelpers.selectAllPlacematContentsItem.Name, () => AppendSelectAllPlacematContentsMenuItem(evt, selection));
+
+            // Portal nodes menu items:
+            menuActionMap.Add(ContextualMenuHelpers.createOppositePortalItem.Name, () => AppendCreateOppositePortalMenuItem(evt, selection));
+            menuActionMap.Add(ContextualMenuHelpers.revertToWireItem.Name, () => AppendRevertWiresMenuItem(evt, selection, false));
+            menuActionMap.Add(ContextualMenuHelpers.revertAllToWiresItem.Name, () => AppendRevertWiresMenuItem(evt, selection, true));
+        }
+
+        void AppendCreateOppositePortalMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection)
+        {
+            if (!GraphModel.AllowPortalCreation)
+                return;
+
+            var portals = new List<WirePortalModel>();
+            var enable = true;
+            foreach (var elementModel in selection)
+            {
+                // If the element is not a portal, we don't append this menu item.
+                if (elementModel is not WirePortalModel portal)
+                    return;
+
+                // If one of the selected portals cannot create its opposite portal, we disable the menu item.
+                if (!portal.CanCreateOppositePortal())
+                    enable = false;
+
+                portals.Add(portal);
+            }
+
+            evt.menu.AppendAction(L10n.Tr("Create Opposite Portal"),
+                _ =>
+                {
+                    Dispatch(new CreateOppositePortalCommand(portals));
+                }, enable ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
+        void AppendRevertWiresMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection, bool revertAll)
+        {
+            if (!GraphModel.AllowPortalCreation)
+                return;
+
+            var portals = new List<WirePortalModel>();
+            var enable = true;
+            foreach (var elementModel in selection)
+            {
+                // If the element is not a portal, we don't append this menu item.
+                if (elementModel is not WirePortalModel portal)
+                    return;
+
+                // If one of the selected portals cannot be reverted, we disable the menu item.
+                if (!portal.CanRevertToWire())
+                {
+                    enable = false;
+                    break;
+                }
+
+                portals.Add(portal);
+            }
+
+            if (revertAll)
+            {
+                evt.menu.AppendAction(L10n.Tr("Revert All to Wires"),
+                    _ =>
+                    {
+                        Dispatch(new RevertAllPortalsToWireCommand(portals));
+                    }, enable ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            }
+            else
+            {
+                evt.menu.AppendAction(L10n.Tr("Revert to Wire"),
+                    _ =>
+                    {
+                        Dispatch(new RevertPortalsToWireCommand(portals));
+                    }, enable ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            }
         }
 
         protected void AppendInsertBlockItemMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection, bool insertAbove, string itemName = "")
@@ -1172,6 +1265,7 @@ namespace Unity.GraphToolkit.Editor
         {
             var selectedVisibleGraphElements = new List<GraphElement>();
             var allBlocks = true;
+            var allPortals = true;
             foreach (var elementModel in selection)
             {
                 // If a graph element is not on the graph (eg: block nodes) or the graph element is a placemat, don't append this menu item.
@@ -1184,6 +1278,9 @@ namespace Unity.GraphToolkit.Editor
                 if (elementModel.NeedsContainer() || elementModel is BlockNodeModel)
                     continue;
 
+                if (elementModel is not WirePortalModel)
+                    allPortals = false;
+
                 allBlocks = false;
 
                 var view = elementModel.GetView<GraphElement>(this);
@@ -1191,8 +1288,8 @@ namespace Unity.GraphToolkit.Editor
                     selectedVisibleGraphElements.Add(view);
             }
 
-            // If all selected elements are block nodes, don't append this menu item.
-            if (selection.Count > 0 && allBlocks)
+            // If selected elements are all block or portal nodes, don't append this menu item.
+            if (selection.Count > 0 && (allBlocks || allPortals))
                 return;
 
             evt.menu.AppendMenuItemFromShortcutWithName<ShortcutCreatePlacematEvent>(GraphTool, selectedVisibleGraphElements.Count > 0 ? L10n.Tr("Create Placemat from Selection") : ShortcutCreatePlacematEvent.id, menuAction =>
@@ -2713,14 +2810,30 @@ namespace Unity.GraphToolkit.Editor
         {
             using var dispose = ListPool<GraphElement>.Get( out var selectedGraphElements);
 
+            var allBlocks = true;
+            var allPortals = true;
+
             foreach (var selection in GetSelection())
             {
-                if( selection is not WireModel)
+                if (selection is not WireModel)
                 {
+                    if (selection is not BlockNodeModel)
+                        allBlocks = false;
+
+                    if (selection is not WirePortalModel)
+                        allPortals = false;
+
                     var graphElement = selection.GetView<GraphElement>(this);
-                    if( graphElement != null && graphElement.visible)
+                    if (graphElement != null && graphElement.visible)
                         selectedGraphElements.Add(graphElement);
                 }
+            }
+
+            if (selectedGraphElements.Count > 0 && (allBlocks || allPortals))
+            {
+                // If only blocks or portals are selected, we don't allow the shortcut.
+                e.StopPropagation();
+                return;
             }
 
             if (selectedGraphElements.Count != 1 || selectedGraphElements[0].Model is not PlacematModel)
@@ -4646,6 +4759,8 @@ namespace Unity.GraphToolkit.Editor
             public void AppendConvertToConstantMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendConvertToConstantMenuItem(evt, selection);
             public void AppendConvertToPortalsMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendConvertToPortalsMenuItem(evt, selection);
             public void AppendInsertNodeMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendInsertNodeMenuItem(evt, selection);
+            public void AppendCreateOppositePortalMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection) => m_GraphView.AppendCreateOppositePortalMenuItem(evt, selection);
+            public void AppendRevertWiresMenuItem(ContextualMenuPopulateEvent evt, List<GraphElementModel> selection, bool revertAll) => m_GraphView.AppendRevertWiresMenuItem(evt, selection, revertAll);
         }
     }
 }

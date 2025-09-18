@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0-exp.2] - 2025-09-18
+
+### Changed
+
+* The "Create Local Subgraph from Selection" menu item now appears in the contextual (right-click) menu for context nodes.
+
+### Fixed
+
+* Contextual menus previously only displayed menu items related to the graph canvas. Now, contextual menus correctly display menu items relevant to the current context.
+* If you use [UseWithContext] on a BlockNode with a ContextNode type, the BlockNode is now compatible with all ContextNodes derived from that ContextNode type as well.
+* Fixed null pointer error when loading a graph asset.
+* The contextual menu items "Create Opposite Portal", "Revert to Wire", and "Revert All to Wires" now correctly appear in the contextual menus for portals.
+* Fixed an exception when an input port and an option have the same name.
+
 ## [0.4.0-exp.1] - 2025-09-10
 
 ### Added

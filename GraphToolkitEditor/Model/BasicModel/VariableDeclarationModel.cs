@@ -125,11 +125,11 @@ namespace Unity.GraphToolkit.Editor
                     return;
                 m_DataType = value;
                 m_InitializationValue = null;
-                if (GraphModel.VariableDeclarationRequiresInitialization(this))
-                    CreateInitializationValue();
-
                 if (GraphModel != null)
                 {
+                    if (GraphModel.VariableDeclarationRequiresInitialization(this))
+                        CreateInitializationValue();
+
                     GraphModel.CurrentGraphChangeDescription.AddChangedModel(this, ChangeHint.Data);
 
                     var variableReferences = GraphModel.FindReferencesInGraph<VariableNodeModel>(this);
