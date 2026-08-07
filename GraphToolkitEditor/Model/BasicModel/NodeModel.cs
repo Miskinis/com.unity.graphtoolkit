@@ -496,6 +496,23 @@ namespace Unity.GraphToolkit.Editor
         public virtual List<string> Modes { get; } = new List<string>();
 
         /// <summary>
+        /// Returns the names of string-typed options that reference graph blackboard variables.
+        /// These options render as dropdowns populated from the graph's variable declarations.
+        /// </summary>
+        /// <remarks>
+        /// Override in derived model classes, or set via the public <see cref="IBlackboardVariableReference"/>
+        /// interface on the associated Node. Graph tools like behavior graphs use this to provide
+        /// typed variable pickers instead of manual string entry.
+        /// </remarks>
+        public virtual string[] GetVariableReferenceOptionNames() => Array.Empty<string>();
+
+        /// <summary>
+        /// Returns the expected System.Type for a blackboard variable referenced by the given option name.
+        /// Return <c>null</c> to show all variable types without filtering.
+        /// </summary>
+        public virtual Type GetExpectedVariableType(string optionName) => null;
+
+        /// <summary>
         /// The current mode.
         /// </summary>
         public int CurrentModeIndex

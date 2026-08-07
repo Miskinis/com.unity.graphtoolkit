@@ -178,5 +178,28 @@ namespace Unity.GraphToolkit.Editor
         /// Do not modify the graph within this method, as it may cause instability or recursive updates.
         /// </remarks>
         public virtual void OnGraphChanged(GraphLogger graphLogger) {}
+
+        /// <summary>
+        /// Returns additional variable types that should always be available in the blackboard,
+        /// regardless of whether graph nodes have data-typed ports exposing those types.
+        /// </summary>
+        /// <remarks>
+        /// Override this to ensure specific types are always available for variable creation.
+        /// The default implementation returns an empty list — types are auto-discovered from
+        /// node ports only. Graph tools with execution-only nodes (like behavior graphs) should
+        /// override this to declare their required variable types.
+        /// </remarks>
+        /// <returns>A read-only list of System.Type objects representing base variable types.</returns>
+        public virtual IReadOnlyList<Type> GetBaseVariableTypes() => Array.Empty<Type>();
+
+        /// <summary>
+        /// Whether variables can change type after creation. Default is <c>true</c>.
+        /// </summary>
+        /// <remarks>
+        /// Override to return <c>false</c> if your tool's nodes reference variables by expected
+        /// type and changing a variable's type would break those references. The "Change..." button
+        /// in the blackboard variable inspector is hidden when this returns <c>false</c>.
+        /// </remarks>
+        public virtual bool CanChangeVariableType() => true;
     }
 }

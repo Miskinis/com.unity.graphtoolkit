@@ -567,7 +567,8 @@ namespace Unity.GraphToolkit.Editor
 
             evt.menu.AppendAction(L10n.Tr("Create Variable"), _ =>
             {
-                CreateVariable();
+                var screenPos = GUIUtility.GUIToScreenPoint(evt.mousePosition);
+                ShowCreateVariableLibrary(screenPos, null);
             });
         }
 

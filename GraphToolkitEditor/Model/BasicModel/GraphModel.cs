@@ -294,6 +294,16 @@ namespace Unity.GraphToolkit.Editor
         public virtual bool AllowExposedVariableCreation => false;
 
         /// <summary>
+        /// Whether variables can change their data type after creation.
+        /// </summary>
+        /// <remarks>
+        /// When <c>false</c>, the "Change..." button in the variable type inspector is hidden
+        /// and variables are immutable once created. Set to <c>false</c> when nodes reference
+        /// variables by expected type and type changes would break graph integrity.
+        /// </remarks>
+        public virtual bool CanChangeVariableType => true;
+
+        /// <summary>
         /// Whether to hide the ports editor when the port is connected. Default is true.
         /// </summary>
         public virtual bool HideConnectedPortsEditor => true;

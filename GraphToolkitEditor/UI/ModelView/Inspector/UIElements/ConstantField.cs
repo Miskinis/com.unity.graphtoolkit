@@ -108,7 +108,7 @@ namespace Unity.GraphToolkit.Editor
 
             var registerCallbackMethod = typeof(CallbackEventHandler)
                 .GetMethods(BindingFlags.Public | BindingFlags.DeclaredOnly | BindingFlags.Instance)
-                .SingleOrDefault(m => m.Name == nameof(RegisterCallback) && m.GetGenericArguments().Length == 2);
+                .FirstOrDefault(m => m.Name == nameof(RegisterCallback) && m.GetGenericArguments().Length == 2);
 
             if (registerCallbackMethod == null)
                 return null;

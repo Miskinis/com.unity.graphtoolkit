@@ -478,6 +478,12 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 createdElement.CallOnDisable();
             }
 
+            // Add base variable types declared by the graph subclass.
+            // Graph tools with execution-only nodes (e.g., behavior graphs) can
+            // override Graph.GetBaseVariableTypes() to declare required types.
+            foreach (var type in m_Graph.GetBaseVariableTypes())
+                supportedTypes.Add(type);
+
             m_SupportedTypes.AddRange(supportedTypes);
             m_SupportedTypes.Sort((a, b) => Comparer<string>.Default.Compare(a.Name, b.Name));
         }
@@ -544,6 +550,9 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 }
             }
         }
+
+        /// <inheritdoc/>
+        public override bool CanChangeVariableType => m_Graph.CanChangeVariableType();
 
         internal static class TestAccessImp
         {

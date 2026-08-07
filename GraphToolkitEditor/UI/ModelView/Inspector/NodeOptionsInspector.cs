@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Unity.GraphToolkit.CSO;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Unity.GraphToolkit.Editor
 {
@@ -96,19 +98,65 @@ namespace Unity.GraphToolkit.Editor
 
             BaseModelPropertyField GetFieldFromNodeOptions(IReadOnlyList<NodeOption> options)
             {
+                var optionTitle = options[0].PortModel.Title ?? "";
+                var optionId = options[0].Id;
+
+                // Build constants and owner models for the common path
                 var constants = new List<Constant>();
                 var ownerModels = new List<GraphElementModel>();
-
                 foreach (var option in options)
                 {
                     constants.Add(option.PortModel.EmbeddedValue);
                     ownerModels.Add(option.PortModel);
                 }
 
-                var nodeOptionEditor = InlineValueEditor.CreateEditorForConstants(
-                    OwnerRootView, ownerModels, constants, options[0].PortModel.Title ?? "");
+                // Check for variable-reference options via IBlackboardVariableReference
+                if (options[0].PortModel.EmbeddedValue is Constant<string> &&
+                    options[0].PortModel is PortModel portModel &&
+                    portModel.GraphModel != null)
+                {
+                    NodeModel ownerNode = null;
+                    if (portModel.NodeModel is NodeModel nm)
+                        ownerNode = nm;
+                    if (ownerNode == null && m_Models.Count > 0)
+                        ownerNode = m_Models[0] as NodeModel;
 
-                return nodeOptionEditor;
+                    if (ownerNode != null)
+                    {
+                        var varRefOptions = ownerNode.GetVariableReferenceOptionNames();
+                        if (varRefOptions != null)
+                        {
+                            foreach (var refName in varRefOptions)
+                            {
+                                if (optionId == refName)
+                                {
+                                    var stringConstants = new List<Constant<string>>();
+                                    var variableNames = new List<string>();
+                                    var expectedType = ownerNode.GetExpectedVariableType(refName);
+
+                                    foreach (var decl in portModel.GraphModel.VariableDeclarations)
+                                    {
+                                        if (expectedType != null)
+                                        {
+                                            var resolved = decl.DataType.Resolve();
+                                            if (resolved == null || !expectedType.IsAssignableFrom(resolved))
+                                                continue;
+                                        }
+                                        variableNames.Add(decl.Title ?? string.Empty);
+                                    }
+
+                                    foreach (var c in constants)
+                                        if (c is Constant<string> sc) stringConstants.Add(sc);
+
+                                    if (stringConstants.Count > 0)
+                                        return new VariablePickerDropdown(OwnerRootView, variableNames, stringConstants, optionTitle, portModel.GraphModel, expectedType);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return InlineValueEditor.CreateEditorForConstants(OwnerRootView, ownerModels, constants, optionTitle);
             }
         }
 
@@ -193,6 +241,105 @@ namespace Unity.GraphToolkit.Editor
             }
 
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Dropdown field for blackboard variable reference options.
+    /// Renders a PopupField&lt;string&gt; populated from graph variable declarations,
+    /// filtered by an optional expected type.
+    /// </summary>
+    internal class VariablePickerDropdown : BaseModelPropertyField
+    {
+        PopupField<string> m_Popup;
+        readonly IReadOnlyList<Constant<string>> m_Constants;
+        int m_LastVarCount;
+
+        public VariablePickerDropdown(
+            ICommandTarget commandTarget,
+            List<string> variableNames,
+            IReadOnlyList<Constant<string>> constants,
+            string label,
+            GraphModel graphModel = null,
+            Type expectedType = null)
+            : base(commandTarget)
+        {
+            m_Constants = constants;
+            m_LastVarCount = variableNames.Count;
+
+            var choices = BuildChoices(graphModel, expectedType);
+            var currentValue = constants.Count > 0 ? (constants[0].Value ?? string.Empty) : string.Empty;
+            int idx = choices.IndexOf(currentValue);
+            if (idx < 0) idx = 0;
+
+            m_Popup = new PopupField<string>(label ?? "", choices, idx);
+            Add(m_Popup);
+
+            m_Popup.RegisterValueChangedCallback(evt =>
+            {
+                foreach (var c in m_Constants) c.Value = evt.newValue;
+            });
+
+            // Subscribe to graph changes so the dropdown stays in sync
+            if (graphModel != null)
+            {
+                RegisterCallback<AttachToPanelEvent>(_ =>
+                {
+                    // Rebuild on next frame when panel is attached
+                    if (graphModel != null)
+                        schedule.Execute(() => Refresh(graphModel, expectedType)).Every(500);
+                });
+                RegisterCallback<DetachFromPanelEvent>(_ =>
+                {
+                    schedule.Execute(() => {}).Pause();
+                });
+            }
+        }
+
+        static List<string> BuildChoices(GraphModel graphModel, Type expectedType)
+        {
+            var choices = new List<string> { string.Empty };
+            if (graphModel != null)
+            {
+                foreach (var decl in graphModel.VariableDeclarations)
+                {
+                    if (expectedType != null)
+                    {
+                        var resolved = decl.DataType.Resolve();
+                        if (resolved == null || !expectedType.IsAssignableFrom(resolved))
+                            continue;
+                    }
+                    choices.Add(decl.Title ?? string.Empty);
+                }
+            }
+            return choices;
+        }
+
+        void Refresh(GraphModel graphModel, Type expectedType)
+        {
+            var newChoices = BuildChoices(graphModel, expectedType);
+            if (newChoices.Count != m_LastVarCount)
+            {
+                var current = m_Constants.Count > 0 ? (m_Constants[0].Value ?? string.Empty) : string.Empty;
+                int idx = newChoices.IndexOf(current);
+                if (idx < 0) idx = 0;
+                m_Popup.choices = newChoices;
+                m_Popup.index = idx;
+                m_LastVarCount = newChoices.Count;
+            }
+        }
+
+        public override void UpdateDisplayedValue()
+        {
+            if (m_Constants.Count > 0)
+            {
+                var current = m_Constants[0].Value ?? string.Empty;
+                if (m_Popup.value != current)
+                {
+                    int idx = m_Popup.choices.IndexOf(current);
+                    if (idx >= 0) m_Popup.index = idx;
+                }
+            }
         }
     }
 }

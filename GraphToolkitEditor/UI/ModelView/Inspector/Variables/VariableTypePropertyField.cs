@@ -53,11 +53,16 @@ namespace Unity.GraphToolkit.Editor
             m_TypeName.AddToClassList(typeNameUssClassName);
             Add(m_TypeName);
 
-            m_ChangeButton = new Button() { text = "Change..." };
-            m_ChangeButton.AddToClassList(changeButtonUssClassName);
-            Add(m_ChangeButton);
-
-            m_ChangeButton.clickable.clicked += OnClick;
+            // Show "Change..." button only if the graph model allows type changes.
+            // Graph tools that tie variables to node types (e.g., behavior graphs)
+            // can disable this via GraphModel.CanChangeVariableType.
+            if (m_Variables.Count > 0 && m_Variables[0].GraphModel.CanChangeVariableType)
+            {
+                m_ChangeButton = new Button() { text = "Change..." };
+                m_ChangeButton.AddToClassList(changeButtonUssClassName);
+                Add(m_ChangeButton);
+                m_ChangeButton.clickable.clicked += OnClick;
+            }
         }
 
         void OnClick()

@@ -20,7 +20,23 @@ namespace Unity.GraphToolkit.Editor.Implementation
         Dictionary<string,INodeOption> m_NodeOptionsByName = new ();
         Dictionary<string, INodeOption> IUserNodeModelImp.NodeOptionsByName => m_NodeOptionsByName;
 
+        // Cached from IBlackboardVariableReference on the Node, if implemented.
+        string[] m_VariableReferenceOptionNames;
+        System.Collections.Generic.Dictionary<string, Type> m_VariableExpectedTypes;
+
         public override string Title => m_Node?.GetType().Name ?? "Missing Node";
+
+        /// <inheritdoc/>
+        public override string[] GetVariableReferenceOptionNames() =>
+            m_VariableReferenceOptionNames ?? Array.Empty<string>();
+
+        /// <inheritdoc/>
+        public override Type GetExpectedVariableType(string optionName)
+        {
+            if (m_VariableExpectedTypes != null && m_VariableExpectedTypes.TryGetValue(optionName, out var t))
+                return t;
+            return null;
+        }
 
         protected override void OnDefineNode(NodeDefinitionScope definitionScope)
         {
@@ -32,12 +48,30 @@ namespace Unity.GraphToolkit.Editor.Implementation
             base.OnAfterDeserialize();
 
             m_Node?.SetImplementation(this);
+
+            // Re-bridge IBlackboardVariableReference after deserialization
+            if (m_Node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         public void InitCustomNode(Node node)
         {
             m_Node = node;
             Node.SetImplementation(this);
+
+            // Bridge IBlackboardVariableReference to NodeModel metadata
+            if (node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         public override void OnDuplicateNode(AbstractNodeModel sourceNode)
@@ -50,6 +84,14 @@ namespace Unity.GraphToolkit.Editor.Implementation
         {
             ((IUserNodeModelImp)this).CallOnEnable();
             base.OnCreateNode();
+
+            if (m_Node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         protected override PortModel CreatePort(PortDirection direction, PortOrientation orientation, string portName, PortType portType, TypeHandle dataType, string portId, PortModelOptions options, Attribute[] attributes, PortModel parentPort)
@@ -71,7 +113,23 @@ namespace Unity.GraphToolkit.Editor.Implementation
         Dictionary<string,INodeOption> m_NodeOptionsByName = new ();
         Dictionary<string, INodeOption> IUserNodeModelImp.NodeOptionsByName => m_NodeOptionsByName;
 
+        // Cached from IBlackboardVariableReference on the Node, if implemented.
+        string[] m_VariableReferenceOptionNames;
+        System.Collections.Generic.Dictionary<string, Type> m_VariableExpectedTypes;
+
         public override string Title => m_Node?.GetType().Name ?? "Missing Node";
+
+        /// <inheritdoc/>
+        public override string[] GetVariableReferenceOptionNames() =>
+            m_VariableReferenceOptionNames ?? Array.Empty<string>();
+
+        /// <inheritdoc/>
+        public override Type GetExpectedVariableType(string optionName)
+        {
+            if (m_VariableExpectedTypes != null && m_VariableExpectedTypes.TryGetValue(optionName, out var t))
+                return t;
+            return null;
+        }
 
         protected override void OnDefineNode(NodeDefinitionScope definitionScope)
         {
@@ -89,6 +147,15 @@ namespace Unity.GraphToolkit.Editor.Implementation
         {
             m_Node = node;
             Node.SetImplementation(this);
+
+            // Bridge IBlackboardVariableReference to NodeModel metadata
+            if (node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         public override void OnDuplicateNode(AbstractNodeModel sourceNode)
@@ -101,6 +168,14 @@ namespace Unity.GraphToolkit.Editor.Implementation
         {
             ((IUserNodeModelImp)this).CallOnEnable();
             base.OnCreateNode();
+
+            if (m_Node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         protected override PortModel CreatePort(PortDirection direction, PortOrientation orientation, string portName, PortType portType, TypeHandle dataType, string portId, PortModelOptions options, Attribute[] attributes, PortModel parentPort)
@@ -122,7 +197,23 @@ namespace Unity.GraphToolkit.Editor.Implementation
         Dictionary<string,INodeOption> m_NodeOptionsByName = new ();
         Dictionary<string, INodeOption> IUserNodeModelImp.NodeOptionsByName => m_NodeOptionsByName;
 
+        // Cached from IBlackboardVariableReference on the Node, if implemented.
+        string[] m_VariableReferenceOptionNames;
+        System.Collections.Generic.Dictionary<string, Type> m_VariableExpectedTypes;
+
         public override string Title => m_Node?.GetType().Name ?? "Missing Node";
+
+        /// <inheritdoc/>
+        public override string[] GetVariableReferenceOptionNames() =>
+            m_VariableReferenceOptionNames ?? Array.Empty<string>();
+
+        /// <inheritdoc/>
+        public override Type GetExpectedVariableType(string optionName)
+        {
+            if (m_VariableExpectedTypes != null && m_VariableExpectedTypes.TryGetValue(optionName, out var t))
+                return t;
+            return null;
+        }
 
         protected override void OnDefineNode(NodeDefinitionScope definitionScope)
         {
@@ -140,6 +231,15 @@ namespace Unity.GraphToolkit.Editor.Implementation
         {
             m_Node = node;
             Node.SetImplementation(this);
+
+            // Bridge IBlackboardVariableReference to NodeModel metadata
+            if (node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         public override void OnDuplicateNode(AbstractNodeModel sourceNode)
@@ -152,6 +252,14 @@ namespace Unity.GraphToolkit.Editor.Implementation
         {
             ((IUserNodeModelImp)this).CallOnEnable();
             base.OnCreateNode();
+
+            if (m_Node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         protected override PortModel CreatePort(PortDirection direction, PortOrientation orientation, string portName, PortType portType, TypeHandle dataType, string portId, PortModelOptions options, Attribute[] attributes, PortModel parentPort)

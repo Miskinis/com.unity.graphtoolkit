@@ -66,7 +66,7 @@ namespace Unity.GraphToolkit.Editor
 #if DEBUG
                 catch (Exception exc)
                 {
-                    Debug.LogError($"{exc} caught while creating UI for model of type: {model.GetType()}");
+                    Debug.LogWarning($"[GraphToolkit] Failed to create custom UI for {model.GetType().Name}. Falling back to default node view. Error: {exc.InnerException?.InnerException?.Message ?? exc.Message}\nStack: {exc.InnerException?.InnerException?.StackTrace}");
                 }
 #else
                 catch { throw; }
@@ -75,7 +75,28 @@ namespace Unity.GraphToolkit.Editor
 
             if (newElem == null)
             {
-                Debug.LogError($"GraphElementFactory doesn't know how to create a UI of type {typeof(T)} for model of type: {model.GetType()}");
+                // Fallback: try base type (Node) view for custom node subclasses
+                var baseModelType = model.GetType().BaseType;
+                while (baseModelType != null && baseModelType != typeof(object))
+                {
+                    var baseExt = ExtensionMethodCache<ElementBuilder>.GetExtensionMethod(
+                        view.GetType(), baseModelType, FilterMethods, KeySelector);
+                    if (baseExt != null)
+                    {
+                        try
+                        {
+                            newElem = baseExt.Invoke(null, new object[] { new ElementBuilder { View = view, Context = context, ParentView = parentView }, model }) as T;
+                            if (newElem != null) break;
+                        }
+                        catch { }
+                    }
+                    baseModelType = baseModelType.BaseType;
+                }
+            }
+
+            if (newElem == null)
+            {
+                Debug.LogWarning($"GraphElementFactory doesn't know how to create a UI for model type: {model.GetType()}");
                 return null;
             }
 
