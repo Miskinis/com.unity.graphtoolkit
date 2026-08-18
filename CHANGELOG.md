@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0-fork.1] - 2026-08-13
+
+### Added
+
+* Added a public debug API `GraphViewDebugAccess` for external debug tooling (the com.oddlock.behavior editor debugger, requirements R4.6/R4.8): enumerate the graph windows displaying a given graph, resolve the node view of a given `INode`, and apply debug status highlights via the `behavior-debug-node-running`, `behavior-debug-node-visited`, and `behavior-debug-node-breakpoint` USS classes. Windows are exposed through the public `GraphViewWindowHandle` type — no internal types leak to external assemblies.
+* Extended `GraphViewDebugAccess` with a per-node read-only debug-info badge API: `SetNodeDebugInfo` attaches/updates a small `Label` on a node view and `ClearNodeDebugInfo` removes it, styled by the `behavior-debug-node-info` USS class. The badge is cached per node view (via `VisualElement.userData`), never intercepts pointer events, and lives in the node's title part root so it survives the fork's culling/rebuild cycle.
+
+### Fixed
+
+* Styled the `behavior-debug-node-running`, `behavior-debug-node-visited`, and `behavior-debug-node-breakpoint` USS classes in `GraphViewWindow.uss` (border color, border width, and compensating negative margin). Previously the debug highlight classes were applied to node views but had no matching USS rules, so the highlight was invisible.
+
 ## [0.4.0-exp.2] - 2025-09-18
 
 ### Changed

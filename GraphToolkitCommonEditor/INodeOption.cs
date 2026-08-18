@@ -42,5 +42,12 @@ namespace Unity.GraphToolkit.Editor
         /// value for type <typeparamref name="T"/>.
         /// </remarks>
         bool TryGetValue<T>(out T value);
+
+        /// <summary>
+        /// Sets the value of the node option.
+        /// </summary>
+        /// <param name="value">The value to set. Must be assignable to the option's data type.</param>
+        /// <returns><c>true</c> if the value was set successfully; <c>false</c> if the types don't match.</returns>
+        bool SetValue(object value);
     }
 }

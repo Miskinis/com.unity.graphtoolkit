@@ -56,5 +56,12 @@ namespace Unity.GraphToolkit.Editor
         {
             return PortModel.EmbeddedValue.TryGetValue(out value);
         }
+        bool INodeOption.SetValue(object value)
+        {
+            if (value == null || !PortModel.PortDataType.IsAssignableFrom(value.GetType()))
+                return false;
+            PortModel.EmbeddedValue.ObjectValue = value;
+            return true;
+        }
     }
 }

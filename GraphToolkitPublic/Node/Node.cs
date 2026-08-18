@@ -331,6 +331,18 @@ namespace Unity.GraphToolkit.Editor
         /// <remarks>The node option's name is unique within the node's input ports and node options.</remarks>
         public INodeOption GetNodeOptionByName(string name) => m_Implementation is IUserNodeModelImp customNodeModel ? customNodeModel.GetNodeOptionByName(name) : null;
 
+        /// <summary>
+        /// Sets the value of a node option by name.
+        /// </summary>
+        /// <param name="optionName">The option name as passed to <c>AddOption</c>.</param>
+        /// <param name="value">The value to set.</param>
+        /// <returns><c>true</c> if the option was found and the value was compatible.</returns>
+        public bool SetOptionValue(string optionName, object value)
+        {
+            var option = GetNodeOptionByName(optionName);
+            return option != null && option.SetValue(value);
+        }
+
         /// <inheritdoc />
         public int inputPortCount => ((INode)m_Implementation).inputPortCount;
 

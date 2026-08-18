@@ -554,6 +554,61 @@ namespace Unity.GraphToolkit.Editor.Implementation
         /// <inheritdoc/>
         public override bool CanChangeVariableType => m_Graph.CanChangeVariableType();
 
+        // ── Programmatic Graph Editing ─────────────────────────────────
+
+        public INode CreateNode<T>(Vector2 position = default) where T : Node, new()
+        {
+            var node = new T();
+            var model = CreateNodeModel(node, position);
+            return (model as UserNodeModelImp)?.Node
+                ?? (model as UserContextNodeModelImp)?.Node;
+        }
+
+        public INode CreateBlockNode<T>(ContextNode contextNode, int index = -1) where T : BlockNode, new()
+        {
+            var block = new T();
+            var blockModel = (UserBlockNodeModelImp)CreateNodeModel(block, default);
+            if (contextNode.m_Implementation is UserContextNodeModelImp ctxModel)
+            {
+                ctxModel.InsertBlock(blockModel, index);
+                return block;
+            }
+            return null;
+        }
+
+        public bool Connect(INode fromNode, string fromPortName, INode toNode, string toPortName)
+        {
+            var fromPort = ((Node)fromNode).GetOutputPortByName(fromPortName);
+            var toPort = ((Node)toNode).GetInputPortByName(toPortName);
+            if (fromPort == null || toPort == null) return false;
+            try
+            {
+                CreateWire((PortModel)toPort, (PortModel)fromPort);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        public void RemoveNode(INode node)
+        {
+            // Handle public Node instances (they wrap a model via IUserNodeModelImp)
+            if (node is IUserNodeModelImp imp)
+            {
+                DeleteNode((AbstractNodeModel)imp, deleteConnections: true);
+                return;
+            }
+            // Handle model instances directly
+            if (node is AbstractNodeModel model)
+                DeleteNode(model, deleteConnections: true);
+        }
+
+        public INode CreateSubgraphNode(Graph subgraphGraph, Vector2 position = default)
+        {
+            if (subgraphGraph == null) return null;
+            var model = CreateSubgraphNode(subgraphGraph.m_Implementation, position);
+            return (INode)model; // SubgraphNodeModel : NodeModel : AbstractNodeModel : INode
+        }
+
         internal static class TestAccessImp
         {
             public static void GetPortTypesForNode(INode node, HashSet<Type> hashSet) => GraphModelImp.GetPortTypesForNode(node, hashSet);

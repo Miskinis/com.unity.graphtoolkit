@@ -201,5 +201,40 @@ namespace Unity.GraphToolkit.Editor
         /// in the blackboard variable inspector is hidden when this returns <c>false</c>.
         /// </remarks>
         public virtual bool CanChangeVariableType() => true;
+
+        // ── Programmatic Graph Editing ─────────────────────────────────
+
+        /// <inheritdoc cref="Implementation.GraphModelImp.CreateNode"/>
+        public INode CreateNode<T>(UnityEngine.Vector2 position = default) where T : Node, new()
+            => m_Implementation.CreateNode<T>(position);
+
+        /// <inheritdoc cref="Implementation.GraphModelImp.CreateBlockNode"/>
+        public INode CreateBlockNode<T>(ContextNode contextNode, int index = -1) where T : BlockNode, new()
+            => m_Implementation.CreateBlockNode<T>(contextNode, index);
+
+        /// <inheritdoc cref="Implementation.GraphModelImp.CreateVariable"/>
+        public IVariable CreateVariable(string name, Type valueType, object defaultValue = null,
+            VariableKind kind = VariableKind.Local)
+            => m_Implementation.CreateVariable(name, valueType, defaultValue, kind);
+
+        /// <inheritdoc cref="Implementation.GraphModelImp.Connect"/>
+        public bool Connect(INode fromNode, string fromPortName, INode toNode, string toPortName)
+            => m_Implementation.Connect(fromNode, fromPortName, toNode, toPortName);
+
+        /// <inheritdoc cref="Implementation.GraphModelImp.RemoveNode"/>
+        public void RemoveNode(INode node) => m_Implementation.RemoveNode(node);
+
+        /// <summary>
+        /// Removes all nodes and wires from the graph. Variables are preserved.
+        /// </summary>
+        public void ClearNodes()
+        {
+            var nodes = new System.Collections.Generic.List<INode>(GetNodes());
+            foreach (var n in nodes) RemoveNode(n);
+        }
+
+        /// <inheritdoc cref="Implementation.GraphModelImp.CreateSubgraphNode"/>
+        public INode CreateSubgraphNode(Graph subgraphGraph, UnityEngine.Vector2 position = default)
+            => m_Implementation.CreateSubgraphNode(subgraphGraph, position);
     }
 }

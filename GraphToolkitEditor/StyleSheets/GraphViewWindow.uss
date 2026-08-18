@@ -98,3 +98,28 @@
 .ge-node .port #type {
     overflow: visible;
 }
+
+.ge-node.behavior-debug-node-running {
+    border-color: #ffb300; /* amber - the active-node accent (matches the Phase 1 overlay row-active) */
+    border-width: 3px;
+    margin: -2px;
+}
+
+.ge-node.behavior-debug-node-visited {
+    border-color: #a4ffff; /* cyan - visited; matches the fork's trace-secondary-highlight */
+    border-width: 2px;
+    margin: -1px;
+}
+
+.ge-node.behavior-debug-node-breakpoint {
+    border-color: #ff0000; /* red - breakpoint; matches the fork's exception-highlight */
+    border-width: 3px;
+    margin: -2px;
+}
+
+.behavior-debug-node-info {
+    font-size: 10px;
+    color: #b4ff69;
+    margin-left: 4px;
+    white-space: nowrap;
+}
