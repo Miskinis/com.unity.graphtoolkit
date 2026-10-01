@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0-fork.3] - 2026-10-01
+
+### Added
+
+* `GraphViewDebugAccess` wire-transition debug API for the com.oddlock.behavior editor debugger:
+  `TryGetWireView(handle, fromNode, toNode, out view)` resolves the wire connecting two nodes,
+  `HighlightWire` tints it amber (matching the node Running highlight), `ResetWireHighlight`
+  restores one wire, and `ClearWireHighlights` restores every wire in a window. Together with the
+  existing node highlight this makes the active transition path visible while debugging — the
+  answer to "which of the two wires between these nodes just fired?" in loop-heavy graphs.
+
+### Fixed
+
+* `GraphModelImp.DeleteWiresBetween(output, input)` never matched direct wires: the `sameOutput`
+  test compared `wire.ToPort == output` instead of `wire.FromPort == output`, so a wire between two
+  ports fell into the portal-matching branch and was not deleted. The portal path (which relies on
+  `sameOutput`) is corrected by the same fix.
+
 ## [0.4.0-fork.2] - 2026-10-01
 
 ### Added

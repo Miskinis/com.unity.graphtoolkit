@@ -216,7 +216,7 @@ namespace Unity.GraphToolkit.Editor.Implementation
             foreach (var wire in WireModels)
             {
                 bool sameInput = wire.ToPort == input;
-                bool sameOutput = wire.ToPort == output;
+                bool sameOutput = wire.FromPort == output;
 
                 if (sameInput && sameOutput)
                 {

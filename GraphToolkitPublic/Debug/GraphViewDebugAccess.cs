@@ -100,6 +100,12 @@ namespace Unity.GraphToolkit.Editor
         public const string debugInfoUssClassName = "behavior-debug-node-info";
 
         /// <summary>
+        /// Color used by <see cref="HighlightWire"/> for the active debug transition.
+        /// Amber, matching the node Running highlight so the two read as one language.
+        /// </summary>
+        static readonly Color k_ActiveWireColor = new Color(1f, 0.69f, 0f);
+
+        /// <summary>
         /// Returns handles for all open graph windows whose current graph object is the one backing
         /// <paramref name="graph"/>.
         /// </summary>
@@ -253,6 +259,95 @@ namespace Unity.GraphToolkit.Editor
                     nodeView.RemoveFromClassList(visitedUssClassName);
                     nodeView.RemoveFromClassList(breakpointUssClassName);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Resolves the wire view connecting <paramref name="fromNode"/>'s output to
+        /// <paramref name="toNode"/>'s input inside the window referenced by <paramref name="handle"/>.
+        /// </summary>
+        /// <param name="handle">A window handle from <see cref="GetWindowsForGraphObject"/>. May point to a destroyed window.</param>
+        /// <param name="fromNode">The transition's source node.</param>
+        /// <param name="toNode">The transition's target node.</param>
+        /// <param name="view">The matching wire view, or null.</param>
+        /// <returns>
+        /// True when a wire connecting the two nodes is present in one of the window's graph views.
+        /// False for invalid inputs, no matching wire, or a culled view (pollers simply retry).
+        /// </returns>
+        /// <remarks>
+        /// Matches by node-model reference identity — the same rule as <see cref="TryGetNodeView"/>.
+        /// When several wires connect the same node pair (e.g. a forward edge and a loop-back edge),
+        /// the first match is returned; callers that need a specific edge should disambiguate first.
+        /// </remarks>
+        public static bool TryGetWireView(GraphViewWindowHandle handle, INode fromNode, INode toNode, out VisualElement view)
+        {
+            view = null;
+            if (handle?.Window == null || fromNode == null || toNode == null)
+                return false;
+
+            var fromModel = GetNodeModel(fromNode);
+            var toModel = GetNodeModel(toNode);
+            if (fromModel == null || toModel == null)
+                return false;
+
+            foreach (var graphView in handle.Window.GraphViews)
+            {
+                if (graphView == null)
+                    continue;
+
+                foreach (var wireView in graphView.Query<Wire>().Build())
+                {
+                    var wireModel = wireView.WireModel;
+                    if (wireModel?.FromPort == null || wireModel.ToPort == null)
+                        continue;
+                    if (!ReferenceEquals(wireModel.FromPort.NodeModel, fromModel))
+                        continue;
+                    if (!ReferenceEquals(wireModel.ToPort.NodeModel, toModel))
+                        continue;
+
+                    view = wireView;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tints a wire view as the active debug transition (amber, matching the node Running highlight).
+        /// </summary>
+        /// <param name="view">A wire view returned by <see cref="TryGetWireView"/>. Null is ignored.</param>
+        public static void HighlightWire(VisualElement view)
+        {
+            view?.Q<WireControl>()?.SetColor(k_ActiveWireColor, k_ActiveWireColor);
+        }
+
+        /// <summary>
+        /// Restores a wire view's default color.
+        /// </summary>
+        /// <param name="view">A wire view previously passed to <see cref="HighlightWire"/>. Null is ignored.</param>
+        public static void ResetWireHighlight(VisualElement view)
+        {
+            view?.Q<WireControl>()?.ResetColor();
+        }
+
+        /// <summary>
+        /// Restores every wire in the window referenced by <paramref name="handle"/> to its default color.
+        /// </summary>
+        /// <param name="handle">A window handle from <see cref="GetWindowsForGraphObject"/>. Null or destroyed handles are ignored.</param>
+        /// <remarks>Used when debug state resets so stale wire highlights never linger.</remarks>
+        public static void ClearWireHighlights(GraphViewWindowHandle handle)
+        {
+            if (handle?.Window == null)
+                return;
+
+            foreach (var graphView in handle.Window.GraphViews)
+            {
+                if (graphView == null)
+                    continue;
+
+                foreach (var wireView in graphView.Query<Wire>().Build())
+                    wireView.Q<WireControl>()?.ResetColor();
             }
         }
 
