@@ -854,6 +854,20 @@ namespace Unity.GraphToolkit.Editor
              });
          }
 
+         int IPort.GetConnectedPortOrder(IPort connectedPort)
+         {
+             var connectedPorts = new List<IPort>();
+             ((IPort)this).GetConnectedPorts(connectedPorts);
+
+             for (var i = 0; i < connectedPorts.Count; i++)
+             {
+                 if (ReferenceEquals(connectedPorts[i], connectedPort))
+                     return i;
+             }
+
+             return -1;
+         }
+
          bool ApplyOnAllConnectedPorts(Func<IPort, bool> predicate)
          {
              var wires = GetConnectedWires();

@@ -426,6 +426,15 @@ namespace Unity.GraphToolkit.Editor
             if (idx < 0) idx = 0;
 
             m_Popup = new PopupField<string>(label ?? "", choices, idx);
+
+            // Blackboard variable names must stay readable even in narrow node bodies: without a
+            // floor, the popup's value area truncated to "HasTa…" on inline node options. The label
+            // column keeps its natural size and the node grows to fit the wider input.
+            m_Popup.style.flexShrink = 0;
+            var popupInput = m_Popup.Q(className: "unity-base-field__input");
+            if (popupInput != null)
+                popupInput.style.minWidth = 120;
+
             Add(m_Popup);
 
             m_Popup.RegisterValueChangedCallback(evt =>

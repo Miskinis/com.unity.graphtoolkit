@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Unity.GraphToolkit.Editor.Implementation;
 
 namespace Unity.GraphToolkit.Editor
@@ -221,6 +222,43 @@ namespace Unity.GraphToolkit.Editor
         /// Use this method to perform any cleanup logic.
         /// </remarks>
         public virtual void OnDisable() {}
+
+        /// <summary>
+        /// The default title displayed for this node in the graph.
+        /// </summary>
+        /// <remarks>
+        /// The title is what designers read on the node header. The default implementation derives
+        /// a human-readable label from the class name: the conventional <c>Node</c>/<c>Block</c>
+        /// suffix is dropped and PascalCase boundaries become spaces
+        /// (<c>PatrolActionNode</c> → <c>Patrol Action</c>). Override this to give a node an
+        /// explicit designer-facing title (<c>"Abort"</c>, <c>"Patrol"</c>, …).
+        /// </remarks>
+        public virtual string DefaultTitle
+        {
+            get
+            {
+                var typeName = GetType().Name;
+
+                // Drop the conventional type suffixes so "AbortNode" reads as "Abort" and
+                // "PatrolActionBlock" as "Patrol Action".
+                if (typeName.Length > 4 && typeName.EndsWith("Node", StringComparison.Ordinal))
+                    typeName = typeName.Substring(0, typeName.Length - 4);
+                else if (typeName.Length > 5 && typeName.EndsWith("Block", StringComparison.Ordinal))
+                    typeName = typeName.Substring(0, typeName.Length - 5);
+
+                // Split PascalCase boundaries: "PatrolAction" → "Patrol Action".
+                var builder = new StringBuilder(typeName.Length + 8);
+                for (var i = 0; i < typeName.Length; i++)
+                {
+                    var c = typeName[i];
+                    if (i > 0 && char.IsUpper(c) && char.IsLower(typeName[i - 1]))
+                        builder.Append(' ');
+                    builder.Append(c);
+                }
+
+                return builder.Length == 0 ? typeName : builder.ToString();
+            }
+        }
 
         /// <summary>
         /// Defines the structure of the node by building its ports and options.

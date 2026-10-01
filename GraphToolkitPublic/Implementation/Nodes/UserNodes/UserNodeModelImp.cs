@@ -24,7 +24,15 @@ namespace Unity.GraphToolkit.Editor.Implementation
         string[] m_VariableReferenceOptionNames;
         System.Collections.Generic.Dictionary<string, Type> m_VariableExpectedTypes;
 
-        public override string Title => m_Node?.GetType().Name ?? "Missing Node";
+        public override string Title
+        {
+            get
+            {
+                if (m_Node == null)
+                    return "Missing Node";
+                return string.IsNullOrEmpty(m_Node.DefaultTitle) ? m_Node.GetType().Name : m_Node.DefaultTitle;
+            }
+        }
 
         /// <inheritdoc/>
         public override string[] GetVariableReferenceOptionNames() =>
@@ -117,7 +125,15 @@ namespace Unity.GraphToolkit.Editor.Implementation
         string[] m_VariableReferenceOptionNames;
         System.Collections.Generic.Dictionary<string, Type> m_VariableExpectedTypes;
 
-        public override string Title => m_Node?.GetType().Name ?? "Missing Node";
+        public override string Title
+        {
+            get
+            {
+                if (m_Node == null)
+                    return "Missing Node";
+                return string.IsNullOrEmpty(m_Node.DefaultTitle) ? m_Node.GetType().Name : m_Node.DefaultTitle;
+            }
+        }
 
         /// <inheritdoc/>
         public override string[] GetVariableReferenceOptionNames() =>
@@ -141,6 +157,15 @@ namespace Unity.GraphToolkit.Editor.Implementation
             base.OnAfterDeserialize();
 
             m_Node?.SetImplementation(this);
+
+            // Re-bridge IBlackboardVariableReference after deserialization
+            if (m_Node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         public void InitCustomNode(BlockNode node)
@@ -201,7 +226,15 @@ namespace Unity.GraphToolkit.Editor.Implementation
         string[] m_VariableReferenceOptionNames;
         System.Collections.Generic.Dictionary<string, Type> m_VariableExpectedTypes;
 
-        public override string Title => m_Node?.GetType().Name ?? "Missing Node";
+        public override string Title
+        {
+            get
+            {
+                if (m_Node == null)
+                    return "Missing Node";
+                return string.IsNullOrEmpty(m_Node.DefaultTitle) ? m_Node.GetType().Name : m_Node.DefaultTitle;
+            }
+        }
 
         /// <inheritdoc/>
         public override string[] GetVariableReferenceOptionNames() =>
@@ -225,6 +258,15 @@ namespace Unity.GraphToolkit.Editor.Implementation
             base.OnAfterDeserialize();
 
             m_Node?.SetImplementation(this);
+
+            // Re-bridge IBlackboardVariableReference after deserialization
+            if (m_Node is IBlackboardVariableReference varRef)
+            {
+                m_VariableReferenceOptionNames = varRef.GetVariableReferenceOptions();
+                m_VariableExpectedTypes = new System.Collections.Generic.Dictionary<string, Type>();
+                foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
+                    m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
+            }
         }
 
         public void InitCustomNode(ContextNode node)

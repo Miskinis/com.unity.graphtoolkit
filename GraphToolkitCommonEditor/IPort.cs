@@ -75,8 +75,26 @@ namespace Unity.GraphToolkit.Editor
         /// <remarks>
         /// This method adds all connected ports to the provided list.
         /// It clears the list before adding items.
+        /// <br/><br/>
+        /// Ports are returned in the port's connection order — the same order shown by the wire-order
+        /// bubbles on a multi-connected output port (1-based in the UI). The order is user-editable
+        /// by reordering wires and is preserved across serialization.
         /// </remarks>
         void GetConnectedPorts(List<IPort> outConnectedPorts);
+
+        /// <summary>
+        /// Gets the 0-based connection order of a port connected to this port.
+        /// </summary>
+        /// <param name="connectedPort">A port connected to this port.</param>
+        /// <returns>
+        /// The 0-based connection order, or <c>-1</c> if <paramref name="connectedPort"/> is not
+        /// connected to this port.
+        /// </returns>
+        /// <remarks>
+        /// The order matches the sequence returned by <see cref="GetConnectedPorts"/> and the
+        /// wire-order bubbles displayed on a multi-connected output port (1-based in the UI).
+        /// </remarks>
+        int GetConnectedPortOrder(IPort connectedPort);
 
         /// <summary>
         /// Tries to retrieve the current value assigned to the port’s UI field.

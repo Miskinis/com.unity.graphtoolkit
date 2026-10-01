@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0-fork.2] - 2026-10-01
+
+### Added
+
+* `Node.DefaultTitle`: a public virtual property for designer-facing node titles. The default derives a human-readable label from the class name — the conventional `Node`/`Block` suffix is dropped and PascalCase boundaries become spaces (`PatrolActionNode` → `Patrol Action`). Override it to set an explicit title (`"Abort"`, `"Patrol"`, …). User node, block, and context models now report `Node.DefaultTitle` as their `Title`.
+* `IPort.GetConnectedPortOrder(IPort)`: returns the 0-based connection order of a connected port (the order shown by the wire-order bubbles on multi-connected output ports), or `-1` when the port is not connected. Documents and makes contractual the ordering already used by `IPort.GetConnectedPorts`, which is now documented as connection-order and serialization-stable.
+
+### Fixed
+
+* Block and context node models now re-bridge `IBlackboardVariableReference` metadata in `OnAfterDeserialize`. Previously only plain user nodes did, so after any save/load (or asset reimport) variable-reference options on **blocks and context nodes** silently fell back to plain text fields — e.g. the Abort node's `ConditionVariable` option never showed its blackboard dropdown.
+* Blackboard-variable dropdowns (`VariablePickerDropdown`) no longer truncate long variable names in narrow node bodies (`HasTarget` previously rendered as `HasTa…`). The popup input now has a 120px minimum width and the node grows to fit.
+
 ## [0.4.0-fork.1] - 2026-08-13
 
 ### Added
