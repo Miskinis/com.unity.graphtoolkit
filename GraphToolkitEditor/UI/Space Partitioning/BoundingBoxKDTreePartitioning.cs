@@ -795,6 +795,13 @@ namespace Unity.GraphToolkit.Editor
 
             foreach (var element in elements)
             {
+                // The same key can appear more than once in this collection (e.g. a container
+                // change recorded twice for the same target container — see
+                // GraphView.UpdateSpacePartitioning's changed-container pass). The sizing above
+                // counts unique keys, so write each key once or the writes overflow newElements.
+                if (!newOrUpdatedElementKeys.Remove(element.Key))
+                    continue;
+
                 newElements[visitContext.Index++] = element;
             }
 

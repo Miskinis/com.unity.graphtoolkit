@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0-fork.4] - 2026-10-01
+
+### Changed
+
+* Selected wires now render **in front of nodes**. Wires rest in layer -1 (below the node layer),
+  so the existing last-selected `BringToFront` call only reordered wires among themselves and a
+  selected wire could stay hidden under a node. While selected, the wire view moves to a top-most
+  layer (`int.MaxValue - 1`, just below the wire-drag candidate) and returns to its resting layer
+  when deselected.
+
+### Fixed
+
+* `IndexOutOfRangeException` in `BoundingBoxKdTreePartitioning.UpdateAndRebuild` when an element's
+  container changes (selecting a wire moves it to the front layer). `GraphView.UpdateSpacePartitioning`
+  can enqueue the same element twice for the same target container, and the rebuild wrote every
+  duplicate into an array sized from unique keys. Duplicate keys are now skipped during the write
+  pass.
+
 ## [0.4.0-fork.3] - 2026-10-01
 
 ### Added

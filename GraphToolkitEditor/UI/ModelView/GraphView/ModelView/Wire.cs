@@ -42,6 +42,13 @@ namespace Unity.GraphToolkit.Editor
 
         bool m_VisuallySelected;
 
+        // Selected wires render IN FRONT of nodes: wires rest in layer -1 (below the node layer),
+        // where BringToFront only reorders among wires. While selected, the view moves to a
+        // dedicated top layer and returns to its resting layer when deselected. The drag
+        // candidate uses Int32.MaxValue, so selected wires stay just below it.
+        const int k_SelectedWireLayer = int.MaxValue - 1;
+        int m_RestingLayer = -1;
+
         protected WireManipulator WireManipulator
         {
             get => m_WireManipulator;
@@ -319,6 +326,33 @@ namespace Unity.GraphToolkit.Editor
             m_VisuallySelected = selected;
             base.UpdateSelectionVisuals(selected);
             UpdateWireControlColors();
+            UpdateSelectionLayer(selected);
+        }
+
+        /// <summary>
+        /// Moves a selected wire to the front-most layer so it renders above nodes, and restores
+        /// its resting layer when deselected.
+        /// </summary>
+        void UpdateSelectionLayer(bool selected)
+        {
+            var graphView = GraphView;
+            if (graphView == null)
+                return;
+
+            if (selected)
+            {
+                if (Layer < k_SelectedWireLayer)
+                {
+                    m_RestingLayer = Layer;
+                    Layer = k_SelectedWireLayer;
+                    graphView.ChangeLayer(this);
+                }
+            }
+            else if (Layer == k_SelectedWireLayer)
+            {
+                Layer = m_RestingLayer;
+                graphView.ChangeLayer(this);
+            }
         }
 
         /// <inheritdoc />
