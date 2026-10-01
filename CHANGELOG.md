@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.0-fork.5] - 2026-10-01
+
+### Fixed
+
+* Completed the space-partitioning fix from `0.4.0-fork.4`, which guarded only one write path and
+  could still throw `IndexOutOfRangeException` from `BoundingBoxKdTreePartitioning.RemoveAndRebuild`
+  and `UpdateAndRebuild`:
+  - `AddOrUpdateElements` now de-duplicates input keys before use. A container change recorded
+    twice for the same target container produced a `[W, W]` list, which built a kd-tree with
+    duplicate nodes; later rebuilds sized arrays from the unique-key count and overflowed.
+  - `RemoveAndRebuild` counts and filters unique keys, so duplicated removal entries no longer
+    size the rebuilt array too small.
+  - `GraphView.UpdateSpacePartitioning` no longer adds a moved non-placemat element twice when the
+    recorded target container equals the element's current parent (the normal case).
+
 ## [0.4.0-fork.4] - 2026-10-01
 
 ### Changed

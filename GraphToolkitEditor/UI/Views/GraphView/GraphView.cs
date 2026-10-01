@@ -4058,8 +4058,12 @@ namespace Unity.GraphToolkit.Editor
                         AddViewToSpacePartitioningByContainer(view, view.parent, placematUsingLayoutByContainer, true);
                         AddViewToSpacePartitioningByContainer(view, view.parent, placematUsingBoundingBoxByContainer, false);
                     }
-                    else
+                    else if (newContainer != view.parent)
                     {
+                        // The recorded target container normally IS the element's current parent
+                        // (ChangeLayer records element.parent); adding under both would enqueue the
+                        // element twice and corrupt partitioning sizing. Only the stale-record case
+                        // (recorded container differs from the current parent) needs this second add.
                         AddViewToSpacePartitioningByContainer(view, view.parent, elementsToRepartitionByContainer);
                     }
                 }

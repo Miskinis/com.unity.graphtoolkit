@@ -229,6 +229,13 @@ namespace Unity.GraphToolkit.Editor
             if (elements.Count == 0)
                 return;
 
+            // Normalize duplicate keys to their first occurrence: callers can enqueue the same
+            // element twice in one update (e.g. a container change recorded twice for the same
+            // target container), and the partitioned-set/tree invariants assume one entry per key.
+            // Duplicates would otherwise produce duplicate kd-tree nodes and corrupt rebuild sizing.
+            if (elements.Count > 1)
+                elements = DedupeElementsByKey(elements);
+
             var noRebuild = true;
             if (Empty)
                 m_RootNode = BuildTree(ToMutableArray(elements), Axis.XMin);
@@ -253,6 +260,23 @@ namespace Unity.GraphToolkit.Editor
 
             if (noRebuild)
                 base.AddOrUpdateElements(elements);
+        }
+
+        /// <summary>
+        /// Returns <paramref name="elements"/> unchanged when all keys are unique; otherwise a
+        /// collection keeping only the first occurrence of each key.
+        /// </summary>
+        static IReadOnlyCollection<BoundingBoxElement> DedupeElementsByKey(IReadOnlyCollection<BoundingBoxElement> elements)
+        {
+            var uniqueElements = new List<BoundingBoxElement>(elements.Count);
+            var seenKeys = new HashSet<TElementKey>();
+            foreach (var element in elements)
+            {
+                if (seenKeys.Add(element.Key))
+                    uniqueElements.Add(element);
+            }
+
+            return uniqueElements.Count == elements.Count ? elements : uniqueElements;
         }
 
         /// <inheritdoc />
@@ -727,8 +751,11 @@ namespace Unity.GraphToolkit.Editor
             if (elementKeys == null || elementKeys.Count == 0)
                 return;
 
+            // Count unique keys only: callers can pass the same key twice, and counting duplicates
+            // overstates the removals, sizing the rebuilt array too small (IndexOutOfRange).
+            var uniqueElementKeys = elementKeys as HashSet<TElementKey> ?? new HashSet<TElementKey>(elementKeys);
             var keysToRemoveCount = 0;
-            foreach (var elementKey in elementKeys)
+            foreach (var elementKey in uniqueElementKeys)
             {
                 if (m_PartitionedElements.Contains(elementKey))
                     keysToRemoveCount++;
@@ -741,7 +768,7 @@ namespace Unity.GraphToolkit.Editor
             var index = 0;
             IterateNodes(m_RootNode, (node, context) =>
             {
-                if (!ContainsKey(elementKeys, node.ElementKey))
+                if (!ContainsKey(uniqueElementKeys, node.ElementKey))
                     newElements[index++] = new BoundingBoxElement(node.ElementKey, node.BoundingBox);
                 context.Continuation = NodeIterationContinuation.ContinueAll;
             });
