@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0-fork.8] - 2026-10-01
+
+### Added
+
+* Node rename via the editor UI. User node, context node, and block models now expose the
+  `Renamable` capability and implement `IRenamable` (`Rename` stores the per-instance title), so
+  the right-click **Rename** action and inline title editing are available for every user node.
+  Previously node models had no `Renamable` capability (plain `AbstractNodeModel` defaults do not
+  include it), so the rename affordances never appeared even though per-instance titles were
+  honored (0.4.0-fork.6).
+
 ## [0.4.0-fork.7] - 2026-10-01
 
 ### Changed

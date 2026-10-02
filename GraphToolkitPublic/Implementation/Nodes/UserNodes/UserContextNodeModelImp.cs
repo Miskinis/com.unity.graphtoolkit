@@ -5,10 +5,16 @@ using UnityEngine;
 namespace Unity.GraphToolkit.Editor.Implementation
 {
     [Serializable]
-    partial class UserContextNodeModelImp : ContextNodeModel, IUserNodeModelImp
+    partial class UserContextNodeModelImp : ContextNodeModel, IUserNodeModelImp, IRenamable
     {
         [NonSerialized]
         new List<BlockNode> m_Blocks;
+
+        /// <inheritdoc />
+        public void Rename(string newName)
+        {
+            base.Title = newName;
+        }
 
         public IReadOnlyList<BlockNode> blocks
         {

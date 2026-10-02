@@ -9,10 +9,16 @@ namespace Unity.GraphToolkit.Editor.Implementation
 {
 
     [Serializable]
-    class UserNodeModelImp : NodeModel, IUserNodeModelImp
+    class UserNodeModelImp : NodeModel, IUserNodeModelImp, IRenamable
     {
         [SerializeReference]
         Node m_Node;
+
+        /// <inheritdoc />
+        public void Rename(string newName)
+        {
+            base.Title = newName;
+        }
 
         Node IUserNodeModelImp.Node => m_Node;
         public Node Node => m_Node;
@@ -72,6 +78,9 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
                     m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
             }
+
+            // Capabilities are not serialized; re-expose rename affordances on load.
+            SetCapability(Unity.GraphToolkit.Editor.Capabilities.Renamable, true);
         }
 
         public void InitCustomNode(Node node)
@@ -87,6 +96,10 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
                     m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
             }
+
+            // Rename affordances (context menu / inline title editing). Capabilities are not
+            // serialized, so this must run on creation too.
+            SetCapability(Unity.GraphToolkit.Editor.Capabilities.Renamable, true);
         }
 
         public override void OnDuplicateNode(AbstractNodeModel sourceNode)
@@ -180,6 +193,9 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
                     m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
             }
+
+            // Capabilities are not serialized; re-expose rename affordances on load.
+            SetCapability(Unity.GraphToolkit.Editor.Capabilities.Renamable, true);
         }
 
         public void InitCustomNode(BlockNode node)
@@ -195,6 +211,10 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
                     m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
             }
+
+            // Rename affordances (context menu / inline title editing). Capabilities are not
+            // serialized, so this must run on creation too.
+            SetCapability(Unity.GraphToolkit.Editor.Capabilities.Renamable, true);
         }
 
         public override void OnDuplicateNode(AbstractNodeModel sourceNode)
@@ -288,6 +308,9 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
                     m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
             }
+
+            // Capabilities are not serialized; re-expose rename affordances on load.
+            SetCapability(Unity.GraphToolkit.Editor.Capabilities.Renamable, true);
         }
 
         public void InitCustomNode(ContextNode node)
@@ -303,6 +326,10 @@ namespace Unity.GraphToolkit.Editor.Implementation
                 foreach (var name in m_VariableReferenceOptionNames ?? Array.Empty<string>())
                     m_VariableExpectedTypes[name] = varRef.GetExpectedVariableType(name);
             }
+
+            // Rename affordances (context menu / inline title editing). Capabilities are not
+            // serialized, so this must run on creation too.
+            SetCapability(Unity.GraphToolkit.Editor.Capabilities.Renamable, true);
         }
 
         public override void OnDuplicateNode(AbstractNodeModel sourceNode)
