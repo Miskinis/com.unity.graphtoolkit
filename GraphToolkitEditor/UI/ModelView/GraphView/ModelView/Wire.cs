@@ -355,6 +355,122 @@ namespace Unity.GraphToolkit.Editor
             }
         }
 
+        /// <summary>
+        /// True when this wire is a back edge: following it returns to a node that is still on the
+        /// current depth-first path (an ancestor of its source) — i.e. the wire closes a loop — or
+        /// the wire is a self-loop. <see cref="WireControl"/> draws back edges dashed so a
+        /// loop-back reads as a loop instead of looking like a plain connection.
+        /// </summary>
+        /// <remarks>
+        /// Classic back-edge classification (depth-first, roots = nodes without incoming wires),
+        /// so only the returning leg of a loop is styled — not every wire that participates in a
+        /// cycle. Computed per draw (graphs are small); not cached, so a wire that closes a new
+        /// cycle styles correctly without a view rebuild.
+        /// </remarks>
+        public bool IsLoopBackWire()
+        {
+            var wireModel = WireModel;
+            var fromNode = wireModel?.FromPort?.NodeModel;
+            var toNode = wireModel?.ToPort?.NodeModel;
+            if (fromNode == null || toNode == null)
+                return false;
+            if (ReferenceEquals(fromNode, toNode))
+                return true; // self-loop
+
+            var graphModel = GraphView?.GraphModel;
+            if (graphModel == null)
+                return false;
+
+            // Adjacency + roots (nodes with no incoming wires; a tailed cycle starts there).
+            var outgoing = new Dictionary<PortNodeModel, List<WireModel>>();
+            var roots = new List<PortNodeModel>();
+            var hasIncoming = new HashSet<PortNodeModel>();
+            foreach (var wire in graphModel.WireModels)
+            {
+                var from = wire.FromPort?.NodeModel;
+                var to = wire.ToPort?.NodeModel;
+                if (from == null || to == null)
+                    continue;
+
+                if (!outgoing.TryGetValue(from, out var outgoingWires))
+                    outgoing[from] = outgoingWires = new List<WireModel>();
+                outgoingWires.Add(wire);
+                hasIncoming.Add(to);
+                if (!outgoing.ContainsKey(to))
+                    outgoing[to] = new List<WireModel>(); // ensure target nodes are walkable
+            }
+
+            foreach (var pair in outgoing)
+            {
+                if (!hasIncoming.Contains(pair.Key))
+                    roots.Add(pair.Key);
+            }
+
+            // Iterative depth-first walk with gray (on path) / black (finished) colors.
+            // The candidate wire is a back edge when it is traversed while its target is gray.
+            var color = new Dictionary<PortNodeModel, int>();
+            var nodeStack = new Stack<PortNodeModel>();
+            var wireIndexStack = new Stack<int>();
+
+            PortNodeModel NextUnvisited()
+            {
+                foreach (var root in roots)
+                {
+                    if (!color.ContainsKey(root))
+                        return root;
+                }
+
+                foreach (var pair in outgoing)
+                {
+                    if (!color.ContainsKey(pair.Key))
+                        return pair.Key;
+                }
+
+                return null;
+            }
+
+            var first = NextUnvisited();
+            while (first != null)
+            {
+                color[first] = 1;
+                nodeStack.Push(first);
+                wireIndexStack.Push(0);
+
+                while (nodeStack.Count > 0)
+                {
+                    var node = nodeStack.Peek();
+                    var wireIndex = wireIndexStack.Pop();
+
+                    if (!outgoing.TryGetValue(node, out var wires) || wireIndex >= wires.Count)
+                    {
+                        color[node] = 2; // black — done with this node's subtree
+                        nodeStack.Pop();
+                        continue;
+                    }
+
+                    wireIndexStack.Push(wireIndex + 1);
+                    var wire = wires[wireIndex];
+                    var target = wire.ToPort?.NodeModel;
+                    if (target == null)
+                        continue;
+
+                    if (ReferenceEquals(wire, wireModel))
+                        return color.TryGetValue(target, out var targetColor) && targetColor == 1;
+
+                    if (!color.ContainsKey(target))
+                    {
+                        color[target] = 1;
+                        nodeStack.Push(target);
+                        wireIndexStack.Push(0);
+                    }
+                }
+
+                first = NextUnvisited();
+            }
+
+            return false;
+        }
+
         /// <inheritdoc />
         public override bool CanBePartitioned()
         {

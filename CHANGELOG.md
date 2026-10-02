@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.0-fork.7] - 2026-10-01
+
+### Changed
+
+* Loop-back wires render **dashed with straight lead-ins and a smoothly bowed curve**. A wire is a
+  back edge when following it returns to a node still on the current depth-first path (an ancestor
+  of its source) — classic back-edge classification, so only the returning leg of a loop is styled,
+  not every wire in a cycle. Back edges run straight for 44 units out of each port (exactly the
+  always-visible port window), then bow through two C1-joined cubics (bow clamped 48–180, handle
+  40–160 local units) — the first handle is collinear with the lead-in, so there is no corner where
+  the straight piece ends. Detected generically per draw (roots = nodes without incoming wires), so
+  any graph benefits.
+* Every wire renders a short always-visible window at each of its ports in a top-level overlay
+  (`wire-end-caps`, above the node layer). The window is the wire's own flattened path trimmed to
+  44 graph units from the port and redrawn in content coordinates, so it overlays the wire exactly
+  — same curve, width, color, and dash pattern; where the wire is already visible, the window is
+  invisible. Where a node covers the wire, a fraction of it stays visible at the arrows. The caps
+  are absolutely positioned (relative flow would stack them) and follow wire color changes
+  (selection, amber debug highlight).
+
+### Fixed
+
+* Wire hit-testing follows the flattened drawn path (the same geometry that is stroked) instead of
+  the straight polyline through the control points. A bowed back edge arcs far away from that
+  polyline, which made the visible dashed line unclickable.
+
 ## [0.4.0-fork.6] - 2026-10-01
 
 ### Fixed
