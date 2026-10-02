@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0-fork.6] - 2026-10-01
+
+### Fixed
+
+* Per-instance node titles are now honored. User node/block/context models report the serialized
+  per-instance title (`AbstractNodeModel.m_Title`, set by the title editor or by tools) when one is
+  present, falling back to `Node.DefaultTitle` (the type's designer-facing default). Previously the
+  generated `Title` override returned `DefaultTitle` unconditionally, so renaming a node in the
+  editor (or programmatically) appeared to do nothing and was lost on reload.
+
 ## [0.4.0-fork.5] - 2026-10-01
 
 ### Fixed

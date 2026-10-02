@@ -30,6 +30,13 @@ namespace Unity.GraphToolkit.Editor.Implementation
             {
                 if (m_Node == null)
                     return "Missing Node";
+
+                // Per-instance rename (serialized m_Title, set by the title editor or by tools)
+                // wins over the type's default title.
+                var instanceTitle = base.Title;
+                if (!string.IsNullOrEmpty(instanceTitle))
+                    return instanceTitle;
+
                 return string.IsNullOrEmpty(m_Node.DefaultTitle) ? m_Node.GetType().Name : m_Node.DefaultTitle;
             }
         }
@@ -131,6 +138,13 @@ namespace Unity.GraphToolkit.Editor.Implementation
             {
                 if (m_Node == null)
                     return "Missing Node";
+
+                // Per-instance rename (serialized m_Title, set by the title editor or by tools)
+                // wins over the type's default title.
+                var instanceTitle = base.Title;
+                if (!string.IsNullOrEmpty(instanceTitle))
+                    return instanceTitle;
+
                 return string.IsNullOrEmpty(m_Node.DefaultTitle) ? m_Node.GetType().Name : m_Node.DefaultTitle;
             }
         }
@@ -232,6 +246,13 @@ namespace Unity.GraphToolkit.Editor.Implementation
             {
                 if (m_Node == null)
                     return "Missing Node";
+
+                // Per-instance rename (serialized m_Title, set by the title editor or by tools)
+                // wins over the type's default title.
+                var instanceTitle = base.Title;
+                if (!string.IsNullOrEmpty(instanceTitle))
+                    return instanceTitle;
+
                 return string.IsNullOrEmpty(m_Node.DefaultTitle) ? m_Node.GetType().Name : m_Node.DefaultTitle;
             }
         }
