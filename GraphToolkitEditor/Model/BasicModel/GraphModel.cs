@@ -276,6 +276,17 @@ namespace Unity.GraphToolkit.Editor
         public virtual bool AllowSubgraphCreation => !IsStateMachineGraph; // State machine graphs do not allow subgraphs.
 
         /// <summary>
+        /// Whether execution-flow wires are transition supports that can carry conditions.
+        /// </summary>
+        /// <remarks>
+        /// When enabled, <see cref="GetWireType"/> returns a transition support type for a wire whose two
+        /// endpoints are execution-flow ports, so transitions and conditions can be authored on regular
+        /// execution wires. Defaults to <c>false</c>; implementations backed by a public <c>Graph</c> type
+        /// read the graph type's <c>GraphOptions.SupportsTransitionWires</c> flag.
+        /// </remarks>
+        public virtual bool SupportsTransitionWires => false;
+
+        /// <summary>
         /// Whether the graph is a state machine graph.
         /// </summary>
         // TODO: Right now, only used to add the correct items in the context menu of the graph view. Could be used for other use cases.

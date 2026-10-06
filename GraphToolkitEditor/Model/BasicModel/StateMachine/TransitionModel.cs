@@ -58,6 +58,16 @@ namespace Unity.GraphToolkit.Editor
         }
 
         /// <summary>
+        /// The condition model for this transition, or null when no condition has been authored.
+        /// </summary>
+        /// <remarks>
+        /// Read-only accessor for importers, validators, and indicators. Unlike <see cref="ConditionModel"/>,
+        /// it never lazily creates and registers an empty root group, so enumerating transitions does not
+        /// dirty the graph or add phantom conditions.
+        /// </remarks>
+        internal GroupConditionModel ConditionModelOrNull => m_ConditionModel;
+
+        /// <summary>
         /// Clone the passed <see cref="GroupConditionModel"/> into this transition.
         /// </summary>
         /// <param name="original">The condition to clone.</param>

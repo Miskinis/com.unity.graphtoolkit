@@ -40,6 +40,25 @@
     --wire-padding: 10;
 }
 
+/* Compact read-condition affordance shown on transitions carrying authored conditions. */
+.ge-transition__condition-badge {
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    border-radius: 7.5px;
+    background-color: var(--graph-color-selection-counterpart);
+    color: #1E1E1E;
+    font-size: 10px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    padding: 0;
+    display: none;
+}
+
+.ge-transition--conditioned .ge-transition__condition-badge {
+    display: flex;
+}
+
 .ge-transition--ghost > .ge-transition__transition-control,
 .ge-transition--ghost:hover > .ge-transition__transition-control {
     --wire-color: var(--graph-color-wire-ghost);

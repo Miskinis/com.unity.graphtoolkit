@@ -275,8 +275,10 @@ namespace Unity.GraphToolkit.Editor
         /// False for invalid inputs, no matching wire, or a culled view (pollers simply retry).
         /// </returns>
         /// <remarks>
-        /// Matches by node-model reference identity — the same rule as <see cref="TryGetNodeView"/>.
-        /// When several wires connect the same node pair (e.g. a forward edge and a loop-back edge),
+        /// Resolves both plain wire views and transition-support wire views (graphs that opt execution wires
+        /// into transition supports). Matching is by node-model reference identity — the same rule as
+        /// <see cref="TryGetNodeView"/> — and direction-aware, so the two opposite links of a loop
+        /// (A -&gt; B and B -&gt; A) resolve distinctly. When several wires connect the same ordered node pair,
         /// the first match is returned; callers that need a specific edge should disambiguate first.
         /// </remarks>
         public static bool TryGetWireView(GraphViewWindowHandle handle, INode fromNode, INode toNode, out VisualElement view)
@@ -295,7 +297,7 @@ namespace Unity.GraphToolkit.Editor
                 if (graphView == null)
                     continue;
 
-                foreach (var wireView in graphView.Query<Wire>().Build())
+                foreach (var wireView in graphView.Query<AbstractWire>().Build())
                 {
                     var wireModel = wireView.WireModel;
                     if (wireModel?.FromPort == null || wireModel.ToPort == null)
@@ -317,9 +319,14 @@ namespace Unity.GraphToolkit.Editor
         /// Tints a wire view as the active debug transition (amber, matching the node Running highlight).
         /// </summary>
         /// <param name="view">A wire view returned by <see cref="TryGetWireView"/>. Null is ignored.</param>
+        /// <remarks>
+        /// Supports both plain <see cref="Wire"/> views and transition-support <c>Transition</c> views:
+        /// transition controls are recolored, and transition arrows (single-state transitions) get their
+        /// outer and inner contour recolored.
+        /// </remarks>
         public static void HighlightWire(VisualElement view)
         {
-            view?.Q<WireControl>()?.SetColor(k_ActiveWireColor, k_ActiveWireColor);
+            SetWireColor(view, k_ActiveWireColor);
         }
 
         /// <summary>
@@ -328,7 +335,48 @@ namespace Unity.GraphToolkit.Editor
         /// <param name="view">A wire view previously passed to <see cref="HighlightWire"/>. Null is ignored.</param>
         public static void ResetWireHighlight(VisualElement view)
         {
-            view?.Q<WireControl>()?.ResetColor();
+            if (view == null)
+                return;
+
+            var wireControl = view.Q<WireControl>();
+            if (wireControl != null)
+            {
+                wireControl.ResetColor();
+                return;
+            }
+
+            view.Q<TransitionControl>()?.ResetColor();
+
+            var transitionArrow = view.Q<TransitionArrow>();
+            if (transitionArrow != null)
+            {
+                transitionArrow.ResetOuterLineColor();
+                transitionArrow.ResetInnerLineColor();
+            }
+        }
+
+        static void SetWireColor(VisualElement view, Color color)
+        {
+            if (view == null)
+                return;
+
+            var wireControl = view.Q<WireControl>();
+            if (wireControl != null)
+            {
+                wireControl.SetColor(color, color);
+                return;
+            }
+
+            var transitionControl = view.Q<TransitionControl>();
+            if (transitionControl != null)
+                transitionControl.Color = color;
+
+            var transitionArrow = view.Q<TransitionArrow>();
+            if (transitionArrow != null)
+            {
+                transitionArrow.OuterLineColor = color;
+                transitionArrow.InnerLineColor = color;
+            }
         }
 
         /// <summary>
@@ -346,8 +394,8 @@ namespace Unity.GraphToolkit.Editor
                 if (graphView == null)
                     continue;
 
-                foreach (var wireView in graphView.Query<Wire>().Build())
-                    wireView.Q<WireControl>()?.ResetColor();
+                foreach (var wireView in graphView.Query<AbstractWire>().Build())
+                    ResetWireHighlight(wireView);
             }
         }
 

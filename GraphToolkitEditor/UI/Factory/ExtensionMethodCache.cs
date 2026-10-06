@@ -65,12 +65,21 @@ namespace Unity.GraphToolkit.Editor
         // ReSharper disable once StaticMemberInGenericType
         static Dictionary<(Type, Type), MethodInfo> s_FactoryMethodCache = null;
 
+        // Resolved lookups keyed by (viewDomain, targetType), kept apart from the declared-factory cache.
+        // A resolved method can come from a base model type; consulting those entries while walking a model's
+        // base types let a base-model factory shadow an exact-model factory declared on a base view domain
+        // (plain WireModel -> CreateWire shadowed TransitionSupportModel -> CreateTransition once the
+        // plain-wire factory had been resolved first).
+        // ReSharper disable once StaticMemberInGenericType
+        static readonly Dictionary<(Type, Type), MethodInfo> s_ResolvedMethodCache = new();
+
         // ReSharper disable once StaticMemberInGenericType
         static Queue<Type> s_CandidateTypes = new Queue<Type>();
 
         public static void ClearCache()
         {
             s_FactoryMethodCache = null;
+            s_ResolvedMethodCache.Clear();
         }
 
         /// <summary>
@@ -87,6 +96,10 @@ namespace Unity.GraphToolkit.Editor
             Func<MethodInfo, bool> filterMethods,
             Func<MethodInfo, Type> keySelector)
         {
+            var resolvedKey = (viewDomain, targetType);
+            if (s_ResolvedMethodCache.TryGetValue(resolvedKey, out var cachedExtension))
+                return cachedExtension;
+
             Assert.AreEqual(0, s_CandidateTypes.Count);
 
             MethodInfo extension = null;
@@ -104,9 +117,7 @@ namespace Unity.GraphToolkit.Editor
                 currentDomain = currentDomain.BaseType;
             }
 
-            var key = (viewDomain, targetType);
-            if (!s_FactoryMethodCache.ContainsKey(key))
-                s_FactoryMethodCache[key] = extension;
+            s_ResolvedMethodCache[resolvedKey] = extension;
 
             s_CandidateTypes.Clear();
             return extension;

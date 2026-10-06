@@ -252,30 +252,49 @@ namespace Unity.GraphToolkit.Editor
                 ComputeLayout();
         }
 
-        Vector2 GetFromDirection(Vector2 fromPoint, Vector2 toPoint)
+        /// <summary>
+        /// Computes the direction the transition leaves an endpoint with.
+        /// </summary>
+        /// <param name="side">The anchor side of the endpoint. <see cref="AnchorSide.None"/> means unanchored (wire-like).</param>
+        /// <param name="fromPoint">The start point of the transition.</param>
+        /// <param name="toPoint">The end point of the transition.</param>
+        /// <param name="isFromSide">Whether the direction is computed for the start (true) or the end (false) point.</param>
+        /// <returns>The direction of the endpoint.</returns>
+        internal static Vector2 GetAnchorDirection(AnchorSide side, Vector2 fromPoint, Vector2 toPoint, bool isFromSide)
         {
-            var fromSide = m_Transition.TransitionModel?.FromNodeAnchorSide ?? AnchorSide.None;
-            return fromSide switch
+            switch (side)
             {
-                AnchorSide.Top => Vector2.down,
-                AnchorSide.Right => Vector2.right,
-                AnchorSide.Bottom => Vector2.up,
-                AnchorSide.Left => Vector2.left,
-                _ => (toPoint - fromPoint).normalized,
-            };
+                case AnchorSide.Top: return Vector2.down;
+                case AnchorSide.Right: return Vector2.right;
+                case AnchorSide.Bottom: return Vector2.up;
+                case AnchorSide.Left: return Vector2.left;
+                default:
+                    return (isFromSide ? toPoint - fromPoint : fromPoint - toPoint).normalized;
+            }
         }
 
-        Vector2 GetToDirection(Vector2 fromPoint, Vector2 toPoint)
+        /// <summary>
+        /// Computes the four render points of a transition path from its endpoints and anchor sides.
+        /// </summary>
+        /// <param name="fromPoint">The start point of the transition.</param>
+        /// <param name="toPoint">The end point of the transition.</param>
+        /// <param name="fromSide">The anchor side of the start point.</param>
+        /// <param name="toSide">The anchor side of the end point.</param>
+        /// <param name="padding">The length of the straight lead-out at each endpoint.</param>
+        /// <param name="controlPoints">The array receiving the four render points. It must have at least four entries.</param>
+        /// <remarks>
+        /// Unanchored endpoints (regular execution ports) follow the segment direction, so the path between
+        /// them is straight and starts/ends one unit inside the endpoints.
+        /// </remarks>
+        internal static void GetRenderPoints(Vector2 fromPoint, Vector2 toPoint, AnchorSide fromSide, AnchorSide toSide, float padding, Vector2[] controlPoints)
         {
-            var toSide = m_Transition.TransitionModel?.ToNodeAnchorSide ?? AnchorSide.None;
-            return toSide switch
-            {
-                AnchorSide.Top => Vector2.down,
-                AnchorSide.Right => Vector2.right,
-                AnchorSide.Bottom => Vector2.up,
-                AnchorSide.Left => Vector2.left,
-                _ => (fromPoint - toPoint).normalized,
-            };
+            var fromDirection = GetAnchorDirection(fromSide, fromPoint, toPoint, true);
+            var toDirection = GetAnchorDirection(toSide, fromPoint, toPoint, false);
+
+            controlPoints[0] = fromPoint + fromDirection;
+            controlPoints[1] = fromPoint + fromDirection * padding;
+            controlPoints[2] = toPoint + toDirection * padding;
+            controlPoints[3] = toPoint + toDirection;
         }
 
         // Returns a float 2x3 matrix that transforms a vector 2 from the middle of the transition to the local space
@@ -287,8 +306,10 @@ namespace Unity.GraphToolkit.Editor
 
             if (Vector2.Distance(fromPoint, toPoint) > Padding * 2)
             {
-                var fromDirection = GetFromDirection(fromPoint, toPoint);
-                var toDirection = GetToDirection(fromPoint, toPoint);
+                var fromDirection = GetAnchorDirection(
+                    m_Transition.TransitionModel?.FromNodeAnchorSide ?? AnchorSide.None, fromPoint, toPoint, true);
+                var toDirection = GetAnchorDirection(
+                    m_Transition.TransitionModel?.ToNodeAnchorSide ?? AnchorSide.None, fromPoint, toPoint, false);
 
                 fromPoint += fromDirection * Padding;
                 toPoint += toDirection * Padding;
@@ -315,13 +336,10 @@ namespace Unity.GraphToolkit.Editor
                 return;
             }
 
-            var fromDirection = GetFromDirection(fromPoint, toPoint);
-            var toDirection = GetToDirection(fromPoint, toPoint);
-
-            m_ControlPoints[0] = fromPoint + fromDirection;
-            m_ControlPoints[1] = fromPoint + fromDirection * Padding;
-            m_ControlPoints[2] = toPoint + toDirection * Padding;
-            m_ControlPoints[3] = toPoint + toDirection;
+            GetRenderPoints(fromPoint, toPoint,
+                m_Transition.TransitionModel?.FromNodeAnchorSide ?? AnchorSide.None,
+                m_Transition.TransitionModel?.ToNodeAnchorSide ?? AnchorSide.None,
+                Padding, m_ControlPoints);
         }
 
         const float k_WidthOnEachSideOfTargetStateTransition = 7.5f;

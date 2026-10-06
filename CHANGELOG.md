@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.4.0-fork.9] - 2026-10-05
+
+### Added
+
+* `GraphOptions.SupportsTransitionWires` (new flag, default off). Graph types that opt in route
+  execution-flow wires between regular nodes through transition supports instead of plain wires, so
+  the transition inspector — transitions, conditions, and nested AND/OR condition groups — becomes
+  available on ordinary execution links. A wire created this way starts with exactly one default
+  transition; rewiring or reusing an existing wire never adds a second one. The flag is exposed
+  through `GraphModelImp.SupportsTransitionWires` (mirroring `AllowSubgraphCreation`) and consumed
+  by `GraphModelImp.GetWireType`; both endpoints must be execution-flow ports.
+* Internal condition-type registry on `GraphModel` (`RegisterConditionType`,
+  `UnregisterConditionType`, `ClearConditionTypes`) consumed by `GetAddConditionOptions()`. The
+  default "Add Group Condition" entry is preserved and listed first. Registration is scoped to the
+  graph-model instance and is not serialized: consumers re-register after a domain reload (for
+  example from `Graph.OnEnable`).
+* Internal `Graph.GetImplementationModel()` accessor and `InternalsVisibleTo` grants for the
+  `Oddlock.Behavior.Editor` consumer, so friend tooling can enumerate wires, transitions, and
+  conditions without reflection.
+* Non-creating `TransitionModel.ConditionModelOrNull` accessor for read-only inspection. It returns
+  null instead of lazily creating and registering an empty root condition group, so importers,
+  validators, and indicators can enumerate transitions without dirtying the graph.
+* Condition indicator on transition views. A transition support whose transition has authored
+  conditions gets the `ge-transition--conditioned` USS class and shows a compact badge
+  (`ge-transition__condition-badge`) at the middle of the link. The state is computed with the
+  non-creating probe (a root group without sub-conditions is not "conditioned"), and the view
+  registers model dependencies on the condition roots so adding or removing a condition updates the
+  indicator live.
+
+### Fixed
+
+* Extension-method factory dispatch order. A factory registered for a base model type could shadow
+  an exact-model factory once the base factory had been resolved for the same view domain: the
+  plain `WireModel` lookup cached `CreateWire` for the derived graph-view type, which then matched
+  `TransitionSupportModel` through its base type and silently degraded transition wires to `Wire`
+  views (losing the transition inspector). Resolved lookups are now cached separately from declared
+  factories and are reused only for the exact (view domain, model type) pair, so exact-model
+  factories always win.
+* Transition views between regular execution ports now position from the connected port views
+  instead of requiring `State` views. Endpoints resolve to the port centers, so the link renders
+  between the two nodes and selection/hit-testing lands on the drawn link instead of the content
+  origin; state-anchored transitions are unchanged. Transition views also follow port geometry like
+  wires do, and the `TransitionControl` path math is extracted into static helpers
+  (`GetAnchorDirection`, `GetRenderPoints`) so the geometry is unit-testable.
+* `GraphViewDebugAccess.TryGetWireView`, `HighlightWire`, `ResetWireHighlight`, and
+  `ClearWireHighlights` now resolve and highlight transition-support wires (`Transition` views) in
+  addition to plain wires. Highlighting covers `TransitionControl` and `TransitionArrow`; matching
+  is direction-aware, so the two opposite links of a loop resolve distinctly. Plain-wire behavior
+  is unchanged.
+
 ## [0.4.0-fork.8] - 2026-10-01
 
 ### Added

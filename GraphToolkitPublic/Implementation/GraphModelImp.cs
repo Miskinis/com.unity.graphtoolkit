@@ -29,6 +29,41 @@ namespace Unity.GraphToolkit.Editor.Implementation
 
         public override bool AllowSubgraphCreation => Graph?.GetType().GetCustomAttribute<GraphAttribute>()?.options.HasFlag(GraphOptions.SupportsSubgraphs) ?? false;
 
+        public override bool SupportsTransitionWires => Graph?.GetType().GetCustomAttribute<GraphAttribute>()?.options.HasFlag(GraphOptions.SupportsTransitionWires) ?? false;
+
+        /// <inheritdoc />
+        public override Type GetWireType(PortModel toPort, PortModel fromPort)
+        {
+            if (SupportsTransitionWires &&
+                toPort != null && fromPort != null &&
+                toPort.DataTypeHandle == TypeHandle.ExecutionFlow &&
+                fromPort.DataTypeHandle == TypeHandle.ExecutionFlow)
+            {
+                return typeof(TransitionSupportModel);
+            }
+
+            return base.GetWireType(toPort, fromPort);
+        }
+
+        /// <inheritdoc />
+        public override WireModel CreateWire(Type wireType, PortModel toPort, PortModel fromPort, bool reuseExisting = true, Hash128 guid = default)
+        {
+            var wireModel = base.CreateWire(wireType, toPort, fromPort, reuseExisting, guid);
+
+            // A newly instantiated transition support always carries exactly one default transition.
+            // The count check makes wire reuse (reconnect) and explicit CreateTransitionSupport calls
+            // double-add safe: a reused wire keeps its authored transitions untouched.
+            // Non-State ports keep AnchorSide.None (the TransitionSupportModel default); there is no
+            // state side to anchor to.
+            if (wireModel is TransitionSupportModel transitionSupport && transitionSupport.Transitions.Count == 0)
+            {
+                var transition = transitionSupport.CreateTransition();
+                transitionSupport.AddTransition(transition);
+            }
+
+            return wireModel;
+        }
+
         public override void OnEnable()
         {
             var graphObject = GraphObject as GraphObjectImp;

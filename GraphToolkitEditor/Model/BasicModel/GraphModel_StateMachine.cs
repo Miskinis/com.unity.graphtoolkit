@@ -8,6 +8,8 @@ namespace Unity.GraphToolkit.Editor
     {
         static readonly (string, ConditionModelFactory)[] k_DefaultConditionTypes = { ("Add Group Condition", _ => new GroupConditionModel()) };
 
+        readonly List<(string label, ConditionModelFactory factory)> m_RegisteredConditionTypes = new();
+
         /// <summary>
         /// A delegate to create a new condition model.
         /// </summary>
@@ -20,7 +22,68 @@ namespace Unity.GraphToolkit.Editor
         /// <returns>A list of condition types that can be added to the graph as well as the add menu label for each.</returns>
         public virtual IReadOnlyList<(string,ConditionModelFactory)> GetAddConditionOptions()
         {
-            return k_DefaultConditionTypes;
+            if (m_RegisteredConditionTypes.Count == 0)
+                return k_DefaultConditionTypes;
+
+            var options = new List<(string, ConditionModelFactory)>(k_DefaultConditionTypes.Length + m_RegisteredConditionTypes.Count);
+            options.AddRange(k_DefaultConditionTypes);
+            options.AddRange(m_RegisteredConditionTypes);
+            return options;
+        }
+
+        /// <summary>
+        /// Registers a condition type that can be added to transitions of this graph.
+        /// </summary>
+        /// <param name="label">The label shown for the condition type in the "add condition" menu. Must be unique per registration.</param>
+        /// <param name="factory">The factory that creates the condition model.</param>
+        /// <remarks>
+        /// Registration is scoped to this <see cref="GraphModel"/> instance and is not serialized: it does not
+        /// survive a domain reload or a graph reload, and it is never shared with other graphs. Consumers own
+        /// re-registration after reload; the natural place is the owning <c>Graph.OnEnable</c>, which runs for
+        /// the graph instance that owns this model. Registering a label that is already registered replaces its
+        /// factory, so re-registration is idempotent.
+        /// </remarks>
+        internal void RegisterConditionType(string label, ConditionModelFactory factory)
+        {
+            if (string.IsNullOrEmpty(label))
+                throw new ArgumentException("A condition type label is required.", nameof(label));
+            if (factory == null)
+                throw new ArgumentNullException(nameof(factory));
+
+            for (var i = 0; i < m_RegisteredConditionTypes.Count; i++)
+            {
+                if (m_RegisteredConditionTypes[i].label == label)
+                {
+                    m_RegisteredConditionTypes[i] = (label, factory);
+                    return;
+                }
+            }
+
+            m_RegisteredConditionTypes.Add((label, factory));
+        }
+
+        /// <summary>
+        /// Unregisters the condition type registered with the given label.
+        /// </summary>
+        /// <param name="label">The label passed to <see cref="RegisterConditionType"/>.</param>
+        internal void UnregisterConditionType(string label)
+        {
+            for (var i = m_RegisteredConditionTypes.Count - 1; i >= 0; i--)
+            {
+                if (m_RegisteredConditionTypes[i].label == label)
+                    m_RegisteredConditionTypes.RemoveAt(i);
+            }
+        }
+
+        /// <summary>
+        /// Removes every condition type registered on this graph model, restoring the default add-condition options.
+        /// </summary>
+        /// <remarks>
+        /// Intended for tests and for consumers that re-register their condition types wholesale.
+        /// </remarks>
+        internal void ClearConditionTypes()
+        {
+            m_RegisteredConditionTypes.Clear();
         }
 
         /// <summary>
@@ -51,8 +114,12 @@ namespace Unity.GraphToolkit.Editor
                 transitionSupport.SetToAnchor(toStateAnchorSide, toStateAnchorOffset);
                 transitionSupport.TransitionSupportKind = transitionSupportKind;
 
-                var transition = transitionSupport.CreateTransition();
-                transitionSupport.AddTransition(transition);
+                // CreateWire may already have added the default transition (see GraphModelImp.CreateWire).
+                if (transitionSupport.Transitions.Count == 0)
+                {
+                    var transition = transitionSupport.CreateTransition();
+                    transitionSupport.AddTransition(transition);
+                }
             }
             return transitionSupport;
         }

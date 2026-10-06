@@ -41,6 +41,16 @@ namespace Unity.GraphToolkit.Editor
         /// </remarks>
         DisableAutoInclusionOfNodesFromGraphAssembly = 1<<1,
 
+        /// <summary>
+        /// Indicates that execution-flow wires between regular ports are transition supports that can carry conditions.
+        /// </summary>
+        /// <remarks>
+        /// When enabled, connecting two execution-flow ports on regular nodes creates a transition-support wire
+        /// instead of a plain wire. Selecting it opens the transition inspector, where conditions can be authored.
+        /// By default, this flag is disabled and execution-flow wires remain plain wires.
+        /// </remarks>
+        SupportsTransitionWires = 1<<2,
+
         // -------------
         // If you're adding a new flag, make sure the default is 'false'. This ensures that the user
         // doesn't override defaults by mistake when setting one or more other flags for their graph options.

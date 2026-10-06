@@ -45,6 +45,26 @@ namespace Unity.GraphToolkit.Editor
         public static readonly string stateToStateSelectorUssClassName = ussClassName.WithUssModifier("state-to-state");
 
         /// <summary>
+        /// The USS class name added to transitions that carry at least one authored condition.
+        /// </summary>
+        public static readonly string conditionedUssClassName = ussClassName.WithUssModifier("conditioned");
+
+        /// <summary>
+        /// The name of the condition-indicator badge element.
+        /// </summary>
+        public static readonly string conditionBadgeName = "transition-condition-badge";
+
+        /// <summary>
+        /// The USS class name of the condition-indicator badge.
+        /// </summary>
+        public static readonly string conditionBadgeUssClassName = ussClassName.WithUssElement("condition-badge");
+
+        /// <summary>
+        /// The size of the condition-indicator badge, in graph units. Mirrors the badge size in Wire.uss.
+        /// </summary>
+        const float k_ConditionBadgeSize = 15f;
+
+        /// <summary>
         /// The name used for the <see cref="ModelViewPart"/> of the transition arrow.
         /// </summary>
         public static readonly string transitionArrowPartName = "transition-arrow";
@@ -62,14 +82,21 @@ namespace Unity.GraphToolkit.Editor
         // Dependency tracking
         ChildView m_LastUsedFromPort;
         ChildView m_LastUsedToPort;
+        Port m_LastUsedFromPortView;
+        Port m_LastUsedToPortView;
         Hash128 m_LastUsedFromNodeModelGuid;
         Hash128 m_LastUsedToNodeModelGuid;
+
+        // Condition roots the indicator reads. Tracked so model-dependency registrations are rebuilt
+        // when transitions or their root groups are added or replaced.
+        readonly List<GraphElementModel> m_ConditionRoots = new();
 
         TransitionHoverDetector m_TransitionHoverDetector;
         TransitionSupportAnchorManipulator m_TransitionAnchorManipulator;
 
         TransitionControl m_TransitionControl;
         TransitionArrow m_TransitionArrow;
+        Label m_ConditionBadge;
 
         bool m_ShowConnectors;
 
@@ -151,11 +178,7 @@ namespace Unity.GraphToolkit.Editor
             }
             else
             {
-                var ui = port.NodeModel.GetView<State>(RootView);
-                if (ui == null)
-                    return Vector2.zero;
-
-                p = ui.GetFromPositionForTransition(TransitionModel);
+                p = GetEndpointPosition(port, true);
             }
 
             return this.WorldToLocal(p);
@@ -176,14 +199,36 @@ namespace Unity.GraphToolkit.Editor
             }
             else
             {
-                var ui = port.NodeModel.GetView<State>(RootView);
-                if (ui == null)
-                    return Vector2.zero;
-
-                p = ui.GetToPositionForTransition(TransitionModel);
+                p = GetEndpointPosition(port, false);
             }
 
             return this.WorldToLocal(p);
+        }
+
+        /// <summary>
+        /// Resolves one endpoint of the transition in graph content coordinates.
+        /// </summary>
+        /// <param name="port">The connected port.</param>
+        /// <param name="isFromSide">Whether the endpoint is the start (true) or the end (false) of the transition.</param>
+        /// <returns>The endpoint position in graph content coordinates.</returns>
+        /// <remarks>
+        /// State-anchored transitions (state machines) resolve against the state view's border anchor.
+        /// Transitions between regular execution ports have no <see cref="State"/> view and resolve
+        /// against the port view's center, exactly like plain wires, so the arrow renders between the
+        /// connected nodes instead of at the content origin.
+        /// </remarks>
+        Vector2 GetEndpointPosition(PortModel port, bool isFromSide)
+        {
+            var stateView = port.NodeModel.GetView<State>(RootView);
+            if (stateView != null)
+            {
+                return isFromSide
+                    ? stateView.GetFromPositionForTransition(TransitionModel)
+                    : stateView.GetToPositionForTransition(TransitionModel);
+            }
+
+            var portView = port.GetView<Port>(RootView);
+            return portView?.GetGlobalCenter() ?? Vector2.zero;
         }
 
         /// <inheritdoc />
@@ -230,6 +275,65 @@ namespace Unity.GraphToolkit.Editor
                 m_TransitionAnchorManipulator = new TransitionSupportAnchorManipulator();
                 this.AddManipulator(m_TransitionHoverDetector);
             }
+
+            m_ConditionBadge = new Label("C")
+            {
+                name = conditionBadgeName,
+                pickingMode = PickingMode.Ignore
+            };
+            m_ConditionBadge.AddToClassList(conditionBadgeUssClassName);
+            Add(m_ConditionBadge);
+        }
+
+        /// <inheritdoc />
+        public override void UpdateUIFromModel(UpdateFromModelVisitor visitor)
+        {
+            base.UpdateUIFromModel(visitor);
+            RefreshConditionIndicator();
+        }
+
+        /// <summary>
+        /// Whether the transition support carries at least one transition with authored conditions.
+        /// </summary>
+        /// <param name="transitionSupport">The transition support to inspect. Null is not conditioned.</param>
+        /// <returns>True when a transition has at least one condition directly under its root group.</returns>
+        /// <remarks>
+        /// Non-creating probe: it reads <see cref="TransitionModel.ConditionModelOrNull"/> so inspecting a
+        /// wire never materializes an empty root group. A root group without sub-conditions does not count
+        /// as conditioned.
+        /// </remarks>
+        internal static bool HasAuthoredConditions(TransitionSupportModel transitionSupport)
+        {
+            if (transitionSupport == null)
+                return false;
+
+            var transitions = transitionSupport.Transitions;
+            for (var i = 0; i < transitions.Count; i++)
+            {
+                var root = transitions[i]?.ConditionModelOrNull;
+                if (root != null && root.SubConditions.Count > 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Refreshes the condition affordance: the conditioned USS class and the badge position.
+        /// </summary>
+        void RefreshConditionIndicator()
+        {
+            var conditioned = HasAuthoredConditions(TransitionModel);
+            EnableInClassList(conditionedUssClassName, conditioned);
+
+            if (!conditioned || m_ConditionBadge == null)
+                return;
+
+            var from = GetFrom();
+            var to = GetTo();
+            var middle = (from + to) * 0.5f;
+            m_ConditionBadge.style.left = middle.x - k_ConditionBadgeSize * 0.5f;
+            m_ConditionBadge.style.top = middle.y - k_ConditionBadgeSize * 0.5f;
         }
 
         /// <inheritdoc />
@@ -370,7 +474,55 @@ namespace Unity.GraphToolkit.Editor
         /// <inheritdoc />
         public override bool HasBackwardsDependenciesChanged()
         {
-            return m_LastUsedFromPort != WireModel.FromNodeGuid.GetView(RootView) || m_LastUsedToPort != WireModel.ToNodeGuid.GetView(RootView);
+            return m_LastUsedFromPort != WireModel.FromNodeGuid.GetView(RootView)
+                || m_LastUsedToPort != WireModel.ToNodeGuid.GetView(RootView)
+                || m_LastUsedFromPortView != WireModel.FromPort?.GetView<Port>(RootView)
+                || m_LastUsedToPortView != WireModel.ToPort?.GetView<Port>(RootView);
+        }
+
+        /// <inheritdoc />
+        public override bool HasModelDependenciesChanged()
+        {
+            var transitions = TransitionModel?.Transitions;
+            var index = 0;
+
+            if (transitions != null)
+            {
+                for (var i = 0; i < transitions.Count; i++)
+                {
+                    var root = transitions[i]?.ConditionModelOrNull;
+                    if (root == null)
+                        continue;
+
+                    if (index >= m_ConditionRoots.Count || m_ConditionRoots[index] != root)
+                        return true;
+                    index++;
+                }
+            }
+
+            return index != m_ConditionRoots.Count;
+        }
+
+        /// <inheritdoc />
+        public override void AddModelDependencies()
+        {
+            m_ConditionRoots.Clear();
+
+            var transitions = TransitionModel?.Transitions;
+            if (transitions == null)
+                return;
+
+            // The indicator reads the root group of every transition. Registering those roots keeps it
+            // live while conditions are authored: adding or removing a condition marks the root changed.
+            for (var i = 0; i < transitions.Count; i++)
+            {
+                var root = transitions[i]?.ConditionModelOrNull;
+                if (root == null)
+                    continue;
+
+                Dependencies.AddModelDependency(root);
+                m_ConditionRoots.Add(root);
+            }
         }
 
         /// <inheritdoc />
@@ -382,7 +534,28 @@ namespace Unity.GraphToolkit.Editor
             AddDependencies(WireModel.FromNodeGuid);
             AddDependencies(WireModel.ToNodeGuid);
 
+            m_LastUsedFromPort = WireModel.FromNodeGuid.GetView(RootView);
+            m_LastUsedToPort = WireModel.ToNodeGuid.GetView(RootView);
+            m_LastUsedFromPortView = AddPortDependencies(WireModel.FromPort);
+            m_LastUsedToPortView = AddPortDependencies(WireModel.ToPort);
+
             return;
+
+            Port AddPortDependencies(PortModel portModel)
+            {
+                if (portModel == null)
+                    return null;
+
+                // Execution-port transitions follow the port view's geometry, like plain wires do.
+                // State ports are hidden and have no port view; state transitions use state anchors.
+                var portView = portModel.GetView<Port>(RootView);
+                if (portView != null)
+                {
+                    Dependencies.AddBackwardDependency(portView, DependencyTypes.Geometry);
+                }
+
+                return portView;
+            }
 
             void AddDependencies(Hash128 nodeModelGuid)
             {
@@ -416,10 +589,7 @@ namespace Unity.GraphToolkit.Editor
         public override bool Overlaps(Rect rectangle)
         {
             if (SizeElement != null)
-            {
-                if (SizeElement.Overlaps(this.ChangeCoordinatesTo(SizeElement, rectangle)))
-                    return true;
-            }
+                return SizeElement.Overlaps(this.ChangeCoordinatesTo(SizeElement, rectangle));
 
             return base.Overlaps(rectangle);
         }
@@ -427,11 +597,11 @@ namespace Unity.GraphToolkit.Editor
         /// <inheritdoc />
         public override bool ContainsPoint(Vector2 localPoint)
         {
+            // The transition root has no layout of its own: the rendered link lives in the size
+            // element (transition control or arrow). Never fall back to the root's zero-sized rect,
+            // or the content origin would stay clickable while the link is drawn elsewhere.
             if (SizeElement != null)
-            {
-                if (SizeElement.ContainsPoint(this.ChangeCoordinatesTo(SizeElement, localPoint)))
-                    return true;
-            }
+                return SizeElement.ContainsPoint(this.ChangeCoordinatesTo(SizeElement, localPoint));
 
             return base.ContainsPoint(localPoint);
         }
