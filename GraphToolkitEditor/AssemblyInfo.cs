@@ -22,7 +22,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.Motion.Hybrid.Tests")]
 [assembly: InternalsVisibleTo("Unity.Motion.StateMachine.Tests")]
 
-// Shard-Struck consumer (Oddlock fork)
+// Shard Struck (Oddlock) consumer
 [assembly: InternalsVisibleTo("Oddlock.Behavior.Editor")]
 
 // Test Samples

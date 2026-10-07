@@ -5,5 +5,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.GraphToolkit.Editor.Tests")]
 [assembly: InternalsVisibleTo("Unity.GraphToolkit.Internal.Editor.Tests")]
 
-// Shard-Struck consumer (Oddlock fork)
+// Shard Struck (Oddlock) consumer
 [assembly: InternalsVisibleTo("Oddlock.Behavior.Editor")]

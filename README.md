@@ -1,7 +1,7 @@
 # Graph Toolkit — Oddlock fork
 
-> **This is a fork of Unity's experimental Graph Toolkit package**, maintained for the
-> **Shard-Struck** project and consumed there as a git dependency. It is not a general-purpose
+> **This is a fork of Unity's experimental Graph Toolkit package**, maintained for
+> **Shard Struck** (by Oddlock) and consumed there as a git dependency. It is not a general-purpose
 > distribution or a registry release. This README summarises **how this fork differs from
 > upstream** (`com.unity.graphtoolkit 0.4.0-exp.2`); release-by-release notes live in
 > [CHANGELOG.md](CHANGELOG.md) under `0.4.0-fork.N` markers.
