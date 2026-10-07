@@ -46,7 +46,7 @@ namespace Unity.GraphToolkit.Editor
         /// <param name="parentClassName">The class name of the parent.</param>
         /// <param name="filter">A filter function to select which fields are displayed in the inspector. If null, defaults to <see cref="NodeOptionsInspector.CanBeInspected"/>.</param>
         // protected rather than private (fork.11): friend assemblies subclass the inspector to
-        // prepend read-only rows (e.g. the Shard-Struck node-type row) into the options fields.
+        // prepend read-only rows (e.g. the Shard Struck node-type row) into the options fields.
         protected NodeOptionsInspector(string name, IReadOnlyList<Model> models, ChildView ownerElement, string parentClassName, Func<FieldInfo, bool> filter)
             : base(name, models, ownerElement, parentClassName, filter) {}
 

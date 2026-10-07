@@ -13,7 +13,7 @@
   override `Tooltip` keep the exact previous behavior. (FORK-8, authoring-ux Req 4.4.)
 * `NodeOptionsInspector`'s constructor is now `protected` instead of private, so friend assemblies
   can subclass the inspector and prepend read-only rows to the node options section (the
-  Shard-Struck consumer adds its selected-node type row there). No behavior change for built-in
+  Shard Struck consumer adds its selected-node type row there). No behavior change for built-in
   consumers.
 
 ## [0.4.0-fork.10] - 2026-10-06
@@ -21,7 +21,7 @@
 ### Added
 
 * `InternalsVisibleTo("Oddlock.Behavior.Editor")` on `Unity.CommandStateObserver` — the
-  Shard-Struck fork's undo path. The consumer's custom condition views record field edits
+  Shard Struck fork's undo path. The consumer's custom condition views record field edits
   (blackboard variable/operator/value, elapsed seconds) by dispatching the fork's registered
   undoable `SetInspectedGraphModelFieldCommand` through `RootView.Dispatch(ICommand)` — the same
   command the built-in model inspector uses — so field edits are recorded on the undo stack
