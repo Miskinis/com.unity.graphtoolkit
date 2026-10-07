@@ -47,6 +47,20 @@ namespace Unity.GraphToolkit.Editor.Implementation
             }
         }
 
+        /// <inheritdoc />
+        public override string Tooltip
+        {
+            get
+            {
+                // A tooltip set on the model instance wins; otherwise the node class's
+                // type-level tooltip; otherwise the base fallback (the displayed title).
+                if (!string.IsNullOrEmpty(m_Tooltip))
+                    return m_Tooltip;
+                return string.IsNullOrEmpty(m_Node?.Tooltip) ? base.Tooltip : m_Node.Tooltip;
+            }
+            set => base.Tooltip = value;
+        }
+
         /// <inheritdoc/>
         public override string[] GetVariableReferenceOptionNames() =>
             m_VariableReferenceOptionNames ?? Array.Empty<string>();
@@ -162,6 +176,20 @@ namespace Unity.GraphToolkit.Editor.Implementation
             }
         }
 
+        /// <inheritdoc />
+        public override string Tooltip
+        {
+            get
+            {
+                // A tooltip set on the model instance wins; otherwise the node class's
+                // type-level tooltip; otherwise the base fallback (the displayed title).
+                if (!string.IsNullOrEmpty(m_Tooltip))
+                    return m_Tooltip;
+                return string.IsNullOrEmpty(m_Node?.Tooltip) ? base.Tooltip : m_Node.Tooltip;
+            }
+            set => base.Tooltip = value;
+        }
+
         /// <inheritdoc/>
         public override string[] GetVariableReferenceOptionNames() =>
             m_VariableReferenceOptionNames ?? Array.Empty<string>();
@@ -275,6 +303,20 @@ namespace Unity.GraphToolkit.Editor.Implementation
 
                 return string.IsNullOrEmpty(m_Node.DefaultTitle) ? m_Node.GetType().Name : m_Node.DefaultTitle;
             }
+        }
+
+        /// <inheritdoc />
+        public override string Tooltip
+        {
+            get
+            {
+                // A tooltip set on the model instance wins; otherwise the node class's
+                // type-level tooltip; otherwise the base fallback (the displayed title).
+                if (!string.IsNullOrEmpty(m_Tooltip))
+                    return m_Tooltip;
+                return string.IsNullOrEmpty(m_Node?.Tooltip) ? base.Tooltip : m_Node.Tooltip;
+            }
+            set => base.Tooltip = value;
         }
 
         /// <inheritdoc/>

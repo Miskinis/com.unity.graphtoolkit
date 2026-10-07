@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.4.0-fork.11] - 2026-10-07
+
+### Added
+
+* Public `Node.Tooltip` (get-only virtual) — the tooltip shown when hovering a node. Node classes
+  override it to keep their type discoverable when the displayed title does not name it (an intent
+  title override or a per-instance rename). The three user-node model implementations
+  (`UserNodeModelImp`, `UserBlockNodeModelImp`, `UserContextNodeModelImp`) report the node's tooltip
+  through `AbstractNodeModel.Tooltip`: a tooltip set directly on the model instance wins, then the
+  node class's tooltip, then the existing fallback (the displayed title). Graphs whose nodes do not
+  override `Tooltip` keep the exact previous behavior. (FORK-8, authoring-ux Req 4.4.)
+* `NodeOptionsInspector`'s constructor is now `protected` instead of private, so friend assemblies
+  can subclass the inspector and prepend read-only rows to the node options section (the
+  Shard-Struck consumer adds its selected-node type row there). No behavior change for built-in
+  consumers.
+
+## [0.4.0-fork.10] - 2026-10-06
+
+### Added
+
+* `InternalsVisibleTo("Oddlock.Behavior.Editor")` on `Unity.CommandStateObserver` — the
+  Shard-Struck fork's undo path. The consumer's custom condition views record field edits
+  (blackboard variable/operator/value, elapsed seconds) by dispatching the fork's registered
+  undoable `SetInspectedGraphModelFieldCommand` through `RootView.Dispatch(ICommand)` — the same
+  command the built-in model inspector uses — so field edits are recorded on the undo stack
+  (R1.3). The consumer's `Oddlock.Behavior.Editor` assembly definition also now references
+  `Unity.CommandStateObserver` directly so the dispatch signature resolves.
+
 ## [0.4.0-fork.9] - 2026-10-05
 
 ### Added

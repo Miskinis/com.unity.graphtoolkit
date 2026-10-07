@@ -261,6 +261,18 @@ namespace Unity.GraphToolkit.Editor
         }
 
         /// <summary>
+        /// The tooltip displayed when hovering over this node.
+        /// </summary>
+        /// <remarks>
+        /// Override this to keep a node's type or purpose discoverable when its displayed title does
+        /// not name it (for example, an intent title override or a per-instance rename). The
+        /// returned text replaces the default tooltip only when it is not null or empty; when it is
+        /// unset, the graph falls back to the node's displayed title, preserving the default
+        /// behavior.
+        /// </remarks>
+        public virtual string Tooltip => null;
+
+        /// <summary>
         /// Defines the structure of the node by building its ports and options.
         /// </summary>
         /// <remarks>
