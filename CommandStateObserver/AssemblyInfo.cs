@@ -21,7 +21,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.Motion.Editor")]
 [assembly: InternalsVisibleTo("Unity.Motion.Editor.Tests")]
 
-// Ancient Privateers consumer (Shard-Struck fork). The consumer's undo path dispatches the fork's
+// Shard-Struck consumer (Oddlock fork). The consumer's undo path dispatches the fork's
 // undoable SetInspectedGraphModelFieldCommand through RootView.Dispatch(ICommand); this grant makes
 // the command-state-observer internals that path flows through an explicit friend surface. (The
 // consumer's asmdef references Unity.CommandStateObserver directly so the dispatch signature

@@ -22,7 +22,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Unity.Motion.Hybrid.Tests")]
 [assembly: InternalsVisibleTo("Unity.Motion.StateMachine.Tests")]
 
-// Ancient Privateers consumer (Shard-Struck fork)
+// Shard-Struck consumer (Oddlock fork)
 [assembly: InternalsVisibleTo("Oddlock.Behavior.Editor")]
 
 // Test Samples

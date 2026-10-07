@@ -1,22 +1,18 @@
 # Graph Toolkit — Oddlock fork
 
 > **This is a fork of Unity's experimental Graph Toolkit package**, maintained for the
-> **Shard-Struck** project (*Ancient Privateers*). It is consumed as a git dependency by that
-> project and is not a general-purpose distribution or a registry release. Fork changes are
-> additive and tracked as `0.4.0-fork.N` releases in [CHANGELOG.md](CHANGELOG.md); upstream is
-> `com.unity.graphtoolkit 0.4.0-exp.2`.
+> **Shard-Struck** project and consumed there as a git dependency. It is not a general-purpose
+> distribution or a registry release. This README summarises **how this fork differs from
+> upstream** (`com.unity.graphtoolkit 0.4.0-exp.2`); release-by-release notes live in
+> [CHANGELOG.md](CHANGELOG.md) under `0.4.0-fork.N` markers.
 
 Graph Toolkit provides a framework to build graph editing tools: a graph data model, a UI
-foundation, and a graph-to-asset pipeline. It has no functionality immediately available to the
-user; if you write a tool that deals with graphs, Graph Toolkit can help you reach your goals more
-quickly while adhering to Unity UI/UX standards.
-
-The upstream package is experimental, and its features and documentation might change before it is
-verified for release. This fork tracks it with focused, project-driven changes on top — mostly
-editor authoring UX, debug tooling, and opt-in support for condition authoring on ordinary
+foundation, and a graph-to-asset pipeline. The upstream package is experimental and might change
+before it is verified for release. The fork tracks it with focused, project-driven changes on top —
+mostly editor authoring UX, debug tooling, and opt-in support for condition authoring on ordinary
 execution wires.
 
-## Fork features
+## Differences from upstream
 
 ### Node identity and authoring UX
 
@@ -79,24 +75,6 @@ execution wires.
 - `NodeOptionsInspector`'s constructor is `protected`, so consumers can subclass the node options
   section (the consumer prepends a read-only node-type row).
 
-## Fork releases
-
-| Release | Date | Highlights |
-| --- | --- | --- |
-| `0.4.0-fork.11` | 2026-10-07 | `Node.Tooltip` public API; `NodeOptionsInspector` protected constructor |
-| `0.4.0-fork.10` | 2026-10-06 | `CommandStateObserver` friend access (consumer undo path for condition edits) |
-| `0.4.0-fork.9` | 2026-10-05 | Transition-wire opt-in, condition registry, condition indicator, dispatch-order + positioning fixes |
-| `0.4.0-fork.8` | 2026-10-01 | Editor UI rename (`IRenamable`) |
-| `0.4.0-fork.7` | 2026-10-01 | Dashed/bowed loop-back wires, port end windows, wire hit-testing |
-| `0.4.0-fork.6` | 2026-10-01 | Per-instance node titles honored |
-| `0.4.0-fork.5` | 2026-10-01 | Space-partitioning fix completion |
-| `0.4.0-fork.4` | 2026-10-01 | Selected wires in front; partitioning crash fix |
-| `0.4.0-fork.3` | 2026-10-01 | Wire debug highlight API; `DeleteWiresBetween` fix |
-| `0.4.0-fork.2` | 2026-10-01 | `Node.DefaultTitle`, `IPort.GetConnectedPortOrder`, variable dropdown fixes |
-| `0.4.0-fork.1` | 2026-08-13 | `GraphViewDebugAccess` debug API, node badges, highlight USS |
-
-Full text for each release: [CHANGELOG.md](CHANGELOG.md).
-
 ## Installation
 
 This fork is consumed as a git dependency. In the consuming project's `Packages/manifest.json`:
@@ -111,9 +89,8 @@ file bumps to the new commit.
 
 **Fork workflow used by this repository:** fork changes are live-tested by copying them into the
 consuming project's `Library/PackageCache/com.unity.graphtoolkit@<hash>` before committing; after a
-push, the package is re-resolved so the lock points at the new commit. Release markers are
-`0.4.0-fork.N` in the changelog; `package.json` intentionally keeps the upstream version string
-(`0.4.0-exp.2`).
+push, the package is re-resolved so the lock points at the new commit. `package.json` intentionally
+keeps the upstream version string (`0.4.0-exp.2`).
 
 ## Compatibility notes
 
